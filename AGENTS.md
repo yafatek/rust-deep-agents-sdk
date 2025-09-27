@@ -1,31 +1,32 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core source lives in `docs/deepagents/src/deepagents/`, grouped by concern (`graph.py`, `middleware.py`, `tools.py`, etc.).
-- Public packaging metadata and docs sit under `docs/deepagents/pyproject.toml` and `docs/deepagents/README.md`.
-- Tests are in `docs/deepagents/tests/` with shared fixtures and utilities in `tests/utils.py`.
-- Reference example agents and assets (e.g., research workflow, diagrams) reside in `docs/deepagents/examples/` and `docs/deepagents/deep_agents.png`.
+- This repo targets a Cargo workspace with crates such as `agents-core`, `agents-runtime`, `agents-toolkit`, `agents-aws`, and `examples/`. Create new crates inside `crates/` to keep the workspace tidy.
+- Place shared documentation under `docs/`; agent blueprints and customer-ready templates should live in `examples/`.
+- Terraform deployment assets belong in `deploy/` with module-level READMEs describing required AWS resources.
 
 ## Build, Test, and Development Commands
-- `cd docs/deepagents && pip install -e .[dev]` installs runtime and developer dependencies.
-- `pytest` from the same directory runs the unit test suite across middleware, HITL, and agent bindings.
-- `python -m examples.research.research_agent` executes the sample research agent; set `TAVILY_API_KEY` beforehand.
+- `cargo fmt` formats all Rust code; run before committing.
+- `cargo clippy --all-targets --all-features` enforces linting and catches common mistakes.
+- `cargo test --all` executes unit and integration tests across crates.
+- When Terraform modules are added, use `terraform fmt` and `terraform validate` inside each submodule.
 
 ## Coding Style & Naming Conventions
-- Follow idiomatic Python 3.11+ with 4-space indentation and type hints for public interfaces.
-- Prefer descriptive module-level names (`create_deep_agent`, `PlanningMiddleware`) that mirror existing patterns.
-- Keep prompts and tool descriptions in `prompts.py`, using UPPER_SNAKE_CASE constants; attach brief comments only for non-obvious logic.
+- Follow idiomatic Rust: 4-space indentation, snake_case for modules/functions, UpperCamelCase for types/traits, SCREAMING_SNAKE_CASE for constants.
+- Document public APIs with `///` doc comments and include runnable examples when feasible.
+- Group async workflows around Tokio; ensure traits that can block are marked `Send + Sync`.
 
 ## Testing Guidelines
-- Use `pytest` for new tests; mirror current naming with `test_*.py` files and `Test*` classes.
-- Co-locate fixtures in `tests/utils.py` or introduce module-local fixtures when tightly scoped.
-- Ensure new features exercise agent orchestration and state updates; aim for deterministic assertions (avoid live API calls).
+- Use `cargo test` for unit coverage and `cargo nextest` (optional) for faster execution once integrated.
+- Co-locate tests in `mod tests` within the same file for unit scope, and create `tests/` directories for cross-crate integration cases.
+- Mock external services (WhatsApp, AWS) with trait-based adapters to keep tests deterministic.
 
 ## Commit & Pull Request Guidelines
-- Write commits in imperative mood (`Add HITL coverage`, `Refine subagent middleware model handling`).
-- Each PR should: describe the change, reference related issues or tickets, note testing commands, and include screenshots or logs when behavior changes.
-- Keep unrelated refactors separate from feature or bug-fix patches to simplify review.
+- Write imperative commit subjects (e.g., `Add agent runtime skeleton`, `Implement DynamoDB state store`).
+- Each PR should include: summary, testing evidence (`cargo fmt`, `clippy`, `test`), relevant issue links, and deployment notes if Terraform changes occur.
+- Keep feature, refactor, and documentation changes separated to simplify review.
 
 ## Security & Configuration Tips
-- Store API keys (e.g., Anthropic, Tavily) in AWS Secrets Manager or environment variables; never commit secrets.
-- When adding customer-specific tools, isolate configuration under environment-driven settings so shared agents remain generic.
+- Load secrets via environment variables first; provide feature-gated helpers to fetch from AWS Secrets Manager or SSM.
+- Never commit Terraform state, credentials, or compiled binaries. The `.gitignore` already blocks common cases—extend it if new tooling is introduced.
+- Enforce structured logging with `tracing`; document log retention requirements for CloudWatch in deployment READMEs.

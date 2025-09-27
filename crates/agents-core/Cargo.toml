@@ -1,0 +1,13 @@
+[package]
+name = "agents-core"
+version = "0.0.1"
+edition = "2021"
+description = "Core traits, data models, and prompt primitives for building deep agents."
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

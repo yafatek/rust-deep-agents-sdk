@@ -1,0 +1,15 @@
+[package]
+name = "agents-example-getting-started"
+version = "0.0.1"
+edition = "2021"
+description = "Getting started example for the Rust deep agents SDK."
+
+[dependencies]
+agents-core = { path = "../../crates/agents-core" }
+agents-runtime = { path = "../../crates/agents-runtime" }
+agents-toolkit = { path = "../../crates/agents-toolkit" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = "0.3"
+tokio = { workspace = true }

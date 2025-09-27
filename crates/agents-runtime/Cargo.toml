@@ -1,0 +1,15 @@
+[package]
+name = "agents-runtime"
+version = "0.0.1"
+edition = "2021"
+description = "Async runtime orchestration for Rust deep agents."
+
+[dependencies]
+agents-core = { path = "../agents-core" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
