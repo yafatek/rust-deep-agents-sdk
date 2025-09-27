@@ -3,18 +3,12 @@ use std::sync::{Arc, RwLock};
 
 use agents_core::agent::{ToolHandle, ToolResponse};
 use agents_core::command::{Command, StateDiff};
-use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
-};
+use agents_core::messaging::{AgentMessage, MessageContent, MessageRole, ToolInvocation};
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 use serde::Deserialize;
 
-fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
-    invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
-        tool_call_id: Some(id.clone()),
-    })
-}
+use crate::{metadata_from, tool_text_response};
 
 #[derive(Clone)]
 pub struct LsTool {
@@ -70,34 +64,29 @@ impl ToolHandle for ReadFileTool {
         let state = self.state.read().expect("filesystem read lock poisoned");
 
         let Some(contents) = state.files.get(&args.path) else {
-            return Ok(ToolResponse::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: MessageContent::Text(format!("Error: File '{}' not found", args.path)),
-                metadata: metadata_from(&invocation),
-            }));
+            return Ok(tool_text_response(
+                &invocation,
+                format!("Error: File '{}' not found", args.path),
+            ));
         };
 
         if contents.trim().is_empty() {
-            return Ok(ToolResponse::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: MessageContent::Text(
-                    "System reminder: File exists but has empty contents".to_string(),
-                ),
-                metadata: metadata_from(&invocation),
-            }));
+            return Ok(tool_text_response(
+                &invocation,
+                "System reminder: File exists but has empty contents",
+            ));
         }
 
         let lines: Vec<&str> = contents.lines().collect();
         if args.offset >= lines.len() {
-            return Ok(ToolResponse::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: MessageContent::Text(format!(
+            return Ok(tool_text_response(
+                &invocation,
+                format!(
                     "Error: Line offset {} exceeds file length ({} lines)",
                     args.offset,
                     lines.len()
-                )),
-                metadata: metadata_from(&invocation),
-            }));
+                ),
+            ));
         }
 
         let end = (args.offset + args.limit).min(lines.len());
@@ -111,11 +100,10 @@ impl ToolHandle for ReadFileTool {
             formatted.push_str(&format!("{line_number:6}\t{content}\n"));
         }
 
-        Ok(ToolResponse::Message(AgentMessage {
-            role: MessageRole::Tool,
-            content: MessageContent::Text(formatted.trim_end().to_string()),
-            metadata: metadata_from(&invocation),
-        }))
+        Ok(tool_text_response(
+            &invocation,
+            formatted.trim_end().to_string(),
+        ))
     }
 }
 
@@ -315,32 +303,29 @@ impl ToolHandle for EditFileTool {
         let mut state = self.state.write().expect("filesystem write lock poisoned");
 
         let Some(existing) = state.files.get(&args.path).cloned() else {
-            return Ok(ToolResponse::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: MessageContent::Text(format!("Error: File '{}' not found", args.path)),
-                metadata: metadata_from(&invocation),
-            }));
+            return Ok(tool_text_response(
+                &invocation,
+                format!("Error: File '{}' not found", args.path),
+            ));
         };
 
         if !existing.contains(&args.old) {
-            return Ok(ToolResponse::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: MessageContent::Text(format!(
-                    "Error: String not found in file: '{}'",
-                    args.old
-                )),
-                metadata: metadata_from(&invocation),
-            }));
+            return Ok(tool_text_response(
+                &invocation,
+                format!("Error: String not found in file: '{}'", args.old),
+            ));
         }
 
         if !args.replace_all {
             let occurrences = existing.matches(&args.old).count();
             if occurrences > 1 {
-                return Ok(ToolResponse::Message(AgentMessage {
-                    role: MessageRole::Tool,
-                    content: MessageContent::Text(format!("Error: String '{}' appears {} times in file. Use replace_all=true to replace all instances, or provide a more specific string with surrounding context.", args.old, occurrences)),
-                    metadata: metadata_from(&invocation),
-                }));
+                return Ok(tool_text_response(
+                    &invocation,
+                    format!(
+                        "Error: String '{}' appears {} times in file. Use replace_all=true to replace all instances, or provide a more specific string with surrounding context.",
+                        args.old, occurrences
+                    ),
+                ));
             }
         }
 

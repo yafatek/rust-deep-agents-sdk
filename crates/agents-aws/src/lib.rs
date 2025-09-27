@@ -1,5 +1,5 @@
 //! AWS integration helpers: wiring for Secrets Manager, DynamoDB, and CloudWatch.
-//! Concrete implementations will live behind feature flags so the core remains
+//! Concrete implementations will live behind feature flags, so the core remains
 //! lightweight when running outside AWS.
 
 /// Placeholder trait for loading configuration secrets.

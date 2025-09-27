@@ -2,18 +2,12 @@ use std::sync::{Arc, RwLock};
 
 use agents_core::agent::{ToolHandle, ToolResponse};
 use agents_core::command::{Command, StateDiff};
-use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
-};
+use agents_core::messaging::{AgentMessage, MessageContent, MessageRole, ToolInvocation};
 use agents_core::state::{AgentStateSnapshot, TodoItem};
 use async_trait::async_trait;
 use serde::Deserialize;
 
-fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
-    invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
-        tool_call_id: Some(id.clone()),
-    })
-}
+use crate::metadata_from;
 
 #[derive(Clone)]
 pub struct WriteTodosTool {
