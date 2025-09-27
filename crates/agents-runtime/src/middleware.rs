@@ -315,6 +315,14 @@ impl AgentMiddleware for HumanInLoopMiddleware {
         if let Some(fragment) = self.prompt_fragment() {
             ctx.request.append_prompt(&fragment);
         }
+        ctx.request.messages.push(AgentMessage {
+            role: MessageRole::System,
+            content: MessageContent::Text(
+                "Tools marked for human approval will emit interrupts requiring external resolution."
+                    .into(),
+            ),
+            metadata: None,
+        });
         Ok(())
     }
 }

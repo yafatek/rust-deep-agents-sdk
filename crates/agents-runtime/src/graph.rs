@@ -5,10 +5,14 @@ use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle, ToolHandle,
     ToolResponse,
 };
+use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 use agents_core::llm::LanguageModel;
-use agents_core::messaging::{AgentMessage, MessageContent, MessageMetadata, MessageRole};
+use agents_core::messaging::{
+    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+};
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
+use serde_json::Value;
 
 use crate::middleware::{
     BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy, HumanInLoopMiddleware,
@@ -147,6 +151,7 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
         history,
         _summarization: summarization,
         hitl,
+        pending_hitl: Arc::new(RwLock::new(None)),
     }
 }
 
@@ -160,6 +165,14 @@ pub struct DeepAgent {
     history: Arc<RwLock<Vec<AgentMessage>>>,
     _summarization: Option<Arc<SummarizationMiddleware>>,
     hitl: Option<Arc<HumanInLoopMiddleware>>,
+    pending_hitl: Arc<RwLock<Option<HitlPending>>>,
+}
+
+struct HitlPending {
+    tool_name: String,
+    payload: Value,
+    tool: Arc<dyn ToolHandle>,
+    message: AgentMessage,
 }
 
 impl DeepAgent {
@@ -184,6 +197,89 @@ impl DeepAgent {
 
     fn current_history(&self) -> Vec<AgentMessage> {
         self.history.read().map(|h| h.clone()).unwrap_or_default()
+    }
+
+    async fn execute_tool(
+        &self,
+        tool: Arc<dyn ToolHandle>,
+        tool_name: String,
+        payload: Value,
+    ) -> anyhow::Result<AgentMessage> {
+        let response = tool
+            .invoke(ToolInvocation {
+                tool_name: tool_name.clone(),
+                args: payload,
+                tool_call_id: None,
+            })
+            .await?;
+        match response {
+            ToolResponse::Message(message) => {
+                self.append_history(message.clone());
+                Ok(message)
+            }
+            ToolResponse::Command(command) => {
+                if let Ok(mut state) = self.state.write() {
+                    command.clone().apply_to(&mut state);
+                }
+                let mut final_message = None;
+                for message in &command.messages {
+                    self.append_history(message.clone());
+                    final_message = Some(message.clone());
+                }
+                Ok(final_message.unwrap_or_else(|| AgentMessage {
+                    role: MessageRole::Tool,
+                    content: MessageContent::Text("Command executed.".into()),
+                    metadata: Some(MessageMetadata { tool_call_id: None }),
+                }))
+            }
+        }
+    }
+
+    pub fn current_interrupt(&self) -> Option<AgentInterrupt> {
+        self.pending_hitl.read().ok().and_then(|guard| {
+            guard.as_ref().map(|pending| {
+                AgentInterrupt::HumanInLoop(HitlInterrupt {
+                    tool_name: pending.tool_name.clone(),
+                    message: pending.message.clone(),
+                })
+            })
+        })
+    }
+
+    pub async fn resume_hitl(&self, action: HitlAction) -> anyhow::Result<AgentMessage> {
+        let pending = self
+            .pending_hitl
+            .write()
+            .ok()
+            .and_then(|mut guard| guard.take())
+            .ok_or_else(|| anyhow::anyhow!("No pending HITL action"))?;
+        match action {
+            HitlAction::Approve => {
+                let result = self
+                    .execute_tool(
+                        pending.tool.clone(),
+                        pending.tool_name.clone(),
+                        pending.payload.clone(),
+                    )
+                    .await?;
+                Ok(result)
+            }
+            HitlAction::Reject { reason } => {
+                let text =
+                    reason.unwrap_or_else(|| "Tool execution rejected by human reviewer.".into());
+                let message = AgentMessage {
+                    role: MessageRole::System,
+                    content: MessageContent::Text(text),
+                    metadata: None,
+                };
+                self.append_history(message.clone());
+                Ok(message)
+            }
+            HitlAction::Respond { message } => {
+                self.append_history(message.clone());
+                Ok(message)
+            }
+        }
     }
 }
 
@@ -221,26 +317,35 @@ impl AgentHandle for DeepAgent {
                 Ok(message)
             }
             PlannerAction::CallTool { tool_name, payload } => {
-                if let Some(hitl) = &self.hitl {
-                    if let Some(policy) = hitl.requires_approval(&tool_name) {
-                        let message_text = policy
-                            .note
-                            .clone()
-                            .unwrap_or_else(|| "Awaiting human approval.".into());
-                        let approval_message = AgentMessage {
-                            role: MessageRole::System,
-                            content: MessageContent::Text(format!(
-                                "Tool '{tool}' requires approval: {message}",
-                                tool = tool_name,
-                                message = message_text
-                            )),
-                            metadata: None,
-                        };
-                        self.append_history(approval_message.clone());
-                        return Ok(approval_message);
+                if let Some(tool) = tools.get(&tool_name).cloned() {
+                    if let Some(hitl) = &self.hitl {
+                        if let Some(policy) = hitl.requires_approval(&tool_name) {
+                            let message_text = policy
+                                .note
+                                .clone()
+                                .unwrap_or_else(|| "Awaiting human approval.".into());
+                            let approval_message = AgentMessage {
+                                role: MessageRole::System,
+                                content: MessageContent::Text(format!(
+                                    "HITL_REQUIRED: Tool '{tool}' requires approval: {message}",
+                                    tool = tool_name,
+                                    message = message_text
+                                )),
+                                metadata: None,
+                            };
+                            let pending = HitlPending {
+                                tool_name: tool_name.clone(),
+                                payload: payload.clone(),
+                                tool: tool.clone(),
+                                message: approval_message.clone(),
+                            };
+                            if let Ok(mut guard) = self.pending_hitl.write() {
+                                *guard = Some(pending);
+                            }
+                            self.append_history(approval_message.clone());
+                            return Ok(approval_message);
+                        }
                     }
-                }
-                if let Some(tool) = tools.get(&tool_name) {
                     let response = tool
                         .invoke(agents_core::messaging::ToolInvocation {
                             tool_name,
@@ -293,7 +398,7 @@ impl AgentHandle for DeepAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agents_core::agent::{PlannerDecision, PlannerHandle};
+    use agents_core::agent::{PlannerDecision, PlannerHandle, ToolHandle, ToolResponse};
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -497,6 +602,23 @@ mod tests {
         }
     }
 
+    struct SensitiveTool;
+
+    #[async_trait]
+    impl ToolHandle for SensitiveTool {
+        fn name(&self) -> &str {
+            "sensitive"
+        }
+
+        async fn invoke(&self, _invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
+            Ok(ToolResponse::Message(AgentMessage {
+                role: MessageRole::Tool,
+                content: MessageContent::Text("tool-output".into()),
+                metadata: None,
+            }))
+        }
+    }
+
     struct ToolPlanner;
 
     #[async_trait]
@@ -518,13 +640,15 @@ mod tests {
     #[tokio::test]
     async fn deep_agent_requires_hitl() {
         let planner = Arc::new(ToolPlanner);
-        let config = DeepAgentConfig::new("Assist", planner).with_tool_interrupt(
-            "sensitive",
-            HitlPolicy {
-                allow_auto: false,
-                note: Some("Needs approval".into()),
-            },
-        );
+        let config = DeepAgentConfig::new("Assist", planner)
+            .with_tool(Arc::new(SensitiveTool))
+            .with_tool_interrupt(
+                "sensitive",
+                HitlPolicy {
+                    allow_auto: false,
+                    note: Some("Needs approval".into()),
+                },
+            );
         let agent = create_deep_agent(config);
 
         let response = agent
@@ -540,8 +664,12 @@ mod tests {
             .unwrap();
 
         match response.content {
-            MessageContent::Text(text) => assert!(text.contains("Needs approval")),
+            MessageContent::Text(text) => assert!(text.contains("HITL_REQUIRED")),
             other => panic!("expected text, got {other:?}"),
         }
+        assert!(matches!(
+            agent.current_interrupt(),
+            Some(AgentInterrupt::HumanInLoop(_))
+        ));
     }
 }

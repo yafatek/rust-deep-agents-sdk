@@ -4,6 +4,7 @@
 
 pub mod agent;
 pub mod command;
+pub mod hitl;
 pub mod llm;
 pub mod messaging;
 pub mod prompts;
@@ -11,3 +12,4 @@ pub mod state;
 
 pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle, ToolHandle, ToolResponse};
 pub use command::{Command, StateDiff};
+pub use hitl::{AgentInterrupt, HitlAction, HitlInterrupt};

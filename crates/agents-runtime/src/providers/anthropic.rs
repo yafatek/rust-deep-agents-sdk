@@ -77,10 +77,7 @@ fn to_anthropic_messages(request: &LlmRequest) -> (String, Vec<AnthropicMessage>
         };
         messages.push(AnthropicMessage {
             role: role.to_string(),
-            content: vec![AnthropicContentBlock {
-                kind: "text",
-                text,
-            }],
+            content: vec![AnthropicContentBlock { kind: "text", text }],
         });
     }
     (request.system_prompt.clone(), messages)
@@ -102,11 +99,7 @@ impl LanguageModel for AnthropicMessagesModel {
             .api_url
             .as_deref()
             .unwrap_or("https://api.anthropic.com/v1/messages");
-        let version = self
-            .config
-            .api_version
-            .as_deref()
-            .unwrap_or("2023-06-01");
+        let version = self.config.api_version.as_deref().unwrap_or("2023-06-01");
 
         let response = self
             .client
