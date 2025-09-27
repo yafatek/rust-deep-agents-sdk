@@ -8,6 +8,7 @@ High-performance Rust framework for composing reusable "deep" AI agents with cus
 - `crates/agents-toolkit` – Built-in tools (mock filesystem, todo management) and utilities.
 - `crates/agents-aws` – AWS adapters (Secrets Manager, DynamoDB, CloudWatch) behind feature flags.
 - `examples/` – Reference agents; `getting-started` provides the echo smoke test.
+  - `agents-example-cli` provides a local CLI harness using OpenAI.
 - `deploy/` – Terraform modules and IaC assets for AWS environments.
 - `docs/` – Roadmap, ADRs, playbooks, and reference material.
 
@@ -17,6 +18,8 @@ cargo fmt
 cargo clippy --all-targets --all-features
 cargo test --all
 cargo run -p agents-example-getting-started
+# or try the CLI harness
+cargo run -p agents-example-cli
 ```
 
 ## Next Steps

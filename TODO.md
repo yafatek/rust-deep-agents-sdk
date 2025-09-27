@@ -10,10 +10,10 @@
 - [x] Wire real subagent dispatch through `task` tool and propagate state/messages.
 - [x] Introduce summarization and human-in-the-loop middleware with configuration hooks.
 - [x] Integrate concrete LLM backend adapters (OpenAI/Anthropic/Gemini) and prompt templates.
-- [ ] Add additional LLM adapters (Bedrock, Ollama, HuggingFace) and shared configuration helpers.
-- [ ] Flesh out human-in-the-loop approval resume flow (interrupt handling, policy enforcement).
+- [x] Flesh out human-in-the-loop approval resume flow (interrupt handling, policy enforcement).
 - [ ] Add persistence layer adapters (DynamoDB/S3) and Terraform modules.
-- [ ] Provide CLI/example for WhatsApp webhook integration using SDK.
+- [ ] Provide CLI-based deep agent demo for local experimentation.
 - [ ] Implement logging/telemetry wiring (tracing -> CloudWatch, metrics).
+- [ ] Document future work for additional LLM adapters (Bedrock/Ollama/HuggingFace).
 - [ ] Document SDK usage (README quickstart, API docs, customer playbooks).
 - [ ] Prepare crates.io packaging and versioning strategy.

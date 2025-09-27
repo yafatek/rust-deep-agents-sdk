@@ -1,6 +1,7 @@
 # Build artifacts
 /target
 **/target/
+.env
 
 # Rust tooling
 **/*.rs.bk

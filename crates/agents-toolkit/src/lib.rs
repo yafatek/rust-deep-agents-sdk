@@ -3,6 +3,7 @@
 
 pub mod filesystem;
 pub mod todos;
+mod search;
 
 pub use filesystem::{EditFileTool, LsTool, ReadFileTool, WriteFileTool};
 pub use todos::WriteTodosTool;

@@ -11,6 +11,6 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-
+reqwest = "0.12.23"
 [dev-dependencies]
 tokio = { workspace = true }
