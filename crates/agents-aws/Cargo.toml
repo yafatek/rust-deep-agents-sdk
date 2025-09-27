@@ -1,0 +1,16 @@
+[package]
+name = "agents-aws"
+version = "0.0.1"
+edition = "2021"
+description = "AWS integrations for the Rust deep agents SDK."
+
+[dependencies]
+agents-core = { path = "../agents-core" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+aws-sdk = []
