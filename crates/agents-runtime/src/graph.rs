@@ -11,7 +11,7 @@ use async_trait::async_trait;
 
 use crate::middleware::{
     BaseSystemPromptMiddleware, FilesystemMiddleware, MiddlewareContext, ModelRequest,
-    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware,
+    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
 };
 
 /// Configuration for building a deep agent instance.
@@ -19,7 +19,7 @@ pub struct DeepAgentConfig {
     pub instructions: String,
     pub planner: Arc<dyn PlannerHandle>,
     pub tools: Vec<Arc<dyn ToolHandle>>,
-    pub subagents: Vec<SubAgentDescriptor>,
+    pub subagents: Vec<SubAgentRegistration>,
 }
 
 impl DeepAgentConfig {
@@ -37,8 +37,13 @@ impl DeepAgentConfig {
         self
     }
 
-    pub fn with_subagent(mut self, descriptor: SubAgentDescriptor) -> Self {
-        self.subagents.push(descriptor);
+    pub fn with_subagent(
+        mut self,
+        descriptor: SubAgentDescriptor,
+        agent: Arc<dyn AgentHandle>,
+    ) -> Self {
+        self.subagents
+            .push(SubAgentRegistration { descriptor, agent });
         self
     }
 }
@@ -123,7 +128,8 @@ impl AgentHandle for DeepAgent {
         }
 
         let context = PlannerContext {
-            history: self.current_history(),
+            history: request.messages.clone(),
+            system_prompt: request.system_prompt.clone(),
         };
         let state_snapshot = Arc::new(self.state.read().map(|s| s.clone()).unwrap_or_default());
 
@@ -190,6 +196,7 @@ mod tests {
     use super::*;
     use agents_core::agent::{PlannerDecision, PlannerHandle};
     use async_trait::async_trait;
+    use serde_json::json;
 
     struct EchoPlanner;
 
@@ -243,6 +250,83 @@ mod tests {
 
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "hello"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    struct DelegatePlanner;
+
+    #[async_trait]
+    impl PlannerHandle for DelegatePlanner {
+        async fn plan(
+            &self,
+            _context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::CallTool {
+                    tool_name: "task".into(),
+                    payload: json!({
+                        "description": "Handle delegation",
+                        "subagent_type": "stub-agent"
+                    }),
+                },
+            })
+        }
+    }
+
+    struct StubSubAgent;
+
+    #[async_trait]
+    impl AgentHandle for StubSubAgent {
+        async fn describe(&self) -> AgentDescriptor {
+            AgentDescriptor {
+                name: "stub-subagent".into(),
+                version: "0.0.1".into(),
+                description: None,
+            }
+        }
+
+        async fn handle_message(
+            &self,
+            _input: AgentMessage,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<AgentMessage> {
+            Ok(AgentMessage {
+                role: MessageRole::Agent,
+                content: MessageContent::Text("delegated-result".into()),
+                metadata: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn deep_agent_delegates_to_subagent() {
+        let planner = Arc::new(DelegatePlanner);
+        let config = DeepAgentConfig::new("Use tools", planner).with_subagent(
+            SubAgentDescriptor {
+                name: "stub-agent".into(),
+                description: "Stub Agent".into(),
+            },
+            Arc::new(StubSubAgent),
+        );
+        let agent = create_deep_agent(config);
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("delegate".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        assert!(matches!(response.role, MessageRole::Tool));
+        match response.content {
+            MessageContent::Text(text) => assert_eq!(text, "delegated-result"),
             other => panic!("expected text, got {other:?}"),
         }
     }

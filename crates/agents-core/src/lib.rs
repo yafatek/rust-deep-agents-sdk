@@ -4,6 +4,7 @@
 
 pub mod agent;
 pub mod command;
+pub mod llm;
 pub mod messaging;
 pub mod prompts;
 pub mod state;

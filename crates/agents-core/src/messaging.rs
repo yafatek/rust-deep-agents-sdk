@@ -24,6 +24,15 @@ pub enum MessageContent {
     Json(serde_json::Value),
 }
 
+impl MessageContent {
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            MessageContent::Text(text) => Some(text.as_str()),
+            _ => None,
+        }
+    }
+}
+
 /// Payload passed into tools when invoked by the runtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInvocation {

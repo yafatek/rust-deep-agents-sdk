@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use agents_core::agent::{ToolHandle, ToolResponse};
+use agents_core::agent::{AgentHandle, ToolHandle, ToolResponse};
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
@@ -141,47 +142,63 @@ impl AgentMiddleware for FilesystemMiddleware {
     }
 }
 
+#[derive(Clone)]
+pub struct SubAgentRegistration {
+    pub descriptor: SubAgentDescriptor,
+    pub agent: Arc<dyn AgentHandle>,
+}
+
+struct SubAgentRegistry {
+    agents: HashMap<String, Arc<dyn AgentHandle>>,
+}
+
+impl SubAgentRegistry {
+    fn new(registrations: Vec<SubAgentRegistration>) -> Self {
+        let mut agents = HashMap::new();
+        for reg in registrations {
+            agents.insert(reg.descriptor.name.clone(), reg.agent.clone());
+        }
+        Self { agents }
+    }
+
+    fn available_names(&self) -> Vec<String> {
+        self.agents.keys().cloned().collect()
+    }
+
+    fn get(&self, name: &str) -> Option<Arc<dyn AgentHandle>> {
+        self.agents.get(name).cloned()
+    }
+}
+
 pub struct SubAgentMiddleware {
     task_tool: Arc<dyn ToolHandle>,
-    subagents: Arc<RwLock<Vec<SubAgentDescriptor>>>,
+    descriptors: Vec<SubAgentDescriptor>,
+    _registry: Arc<SubAgentRegistry>,
 }
 
 impl SubAgentMiddleware {
-    pub fn new(subagents: Vec<SubAgentDescriptor>) -> Self {
-        let shared = Arc::new(RwLock::new(subagents));
-        let task_tool: Arc<dyn ToolHandle> = Arc::new(TaskRouterTool::new(shared.clone()));
+    pub fn new(registrations: Vec<SubAgentRegistration>) -> Self {
+        let descriptors = registrations.iter().map(|r| r.descriptor.clone()).collect();
+        let registry = Arc::new(SubAgentRegistry::new(registrations));
+        let task_tool: Arc<dyn ToolHandle> = Arc::new(TaskRouterTool::new(registry.clone()));
         Self {
             task_tool,
-            subagents: shared,
-        }
-    }
-
-    pub fn with_task_tool(
-        subagents: Arc<RwLock<Vec<SubAgentDescriptor>>>,
-        task_tool: Arc<dyn ToolHandle>,
-    ) -> Self {
-        Self {
-            task_tool,
-            subagents,
+            descriptors,
+            _registry: registry,
         }
     }
 
     fn prompt_fragment(&self) -> String {
-        let descriptions: Vec<String> = self
-            .subagents
-            .read()
-            .expect("subagents lock poisoned")
-            .iter()
-            .map(|agent| format!("- {}: {}", agent.name, agent.description))
-            .collect();
-
-        let other_agents = if descriptions.is_empty() {
-            String::from("- general-purpose: Default reasoning agent")
+        let descriptions: Vec<String> = if self.descriptors.is_empty() {
+            vec![String::from("- general-purpose: Default reasoning agent")]
         } else {
-            descriptions.join("\n")
+            self.descriptors
+                .iter()
+                .map(|agent| format!("- {}: {}", agent.name, agent.description))
+                .collect()
         };
 
-        TASK_TOOL_DESCRIPTION.replace("{other_agents}", &other_agents)
+        TASK_TOOL_DESCRIPTION.replace("{other_agents}", &descriptions.join("\n"))
     }
 }
 
@@ -217,21 +234,16 @@ impl AgentMiddleware for BaseSystemPromptMiddleware {
 }
 
 pub struct TaskRouterTool {
-    subagents: Arc<RwLock<Vec<SubAgentDescriptor>>>,
+    registry: Arc<SubAgentRegistry>,
 }
 
 impl TaskRouterTool {
-    pub fn new(subagents: Arc<RwLock<Vec<SubAgentDescriptor>>>) -> Self {
-        Self { subagents }
+    fn new(registry: Arc<SubAgentRegistry>) -> Self {
+        Self { registry }
     }
 
     fn available_subagents(&self) -> Vec<String> {
-        self.subagents
-            .read()
-            .expect("subagents lock poisoned")
-            .iter()
-            .map(|s| s.name.clone())
-            .collect()
+        self.registry.available_names()
     }
 }
 
@@ -250,23 +262,32 @@ impl ToolHandle for TaskRouterTool {
     async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
         let args: TaskInvocationArgs = serde_json::from_value(invocation.args.clone())?;
         let available = self.available_subagents();
-        let message = if available.contains(&args.subagent_type) {
-            format!(
-                "Subagent '{subagent}' is not yet wired in the Rust runtime. Pending implementation for description: {description}",
-                subagent = args.subagent_type,
-                description = args.description
-            )
-        } else {
-            format!(
-                "Unknown subagent '{subagent}'. Available: {available:?}",
-                subagent = args.subagent_type,
-                available = available
-            )
-        };
+        if let Some(agent) = self.registry.get(&args.subagent_type) {
+            let user_message = AgentMessage {
+                role: MessageRole::User,
+                content: MessageContent::Text(args.description.clone()),
+                metadata: None,
+            };
+            let response = agent
+                .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
+                .await?;
+
+            return Ok(ToolResponse::Message(AgentMessage {
+                role: MessageRole::Tool,
+                content: response.content,
+                metadata: invocation.tool_call_id.map(|id| MessageMetadata {
+                    tool_call_id: Some(id),
+                }),
+            }));
+        }
 
         Ok(ToolResponse::Message(AgentMessage {
             role: MessageRole::Tool,
-            content: MessageContent::Text(message),
+            content: MessageContent::Text(format!(
+                "Unknown subagent '{subagent}'. Available: {available:?}",
+                subagent = args.subagent_type,
+                available = available
+            )),
             metadata: invocation.tool_call_id.map(|id| MessageMetadata {
                 tool_call_id: Some(id),
             }),
@@ -283,6 +304,7 @@ pub struct SubAgentDescriptor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agents_core::agent::{AgentDescriptor, AgentHandle};
     use agents_core::messaging::{MessageContent, MessageRole};
     use serde_json::json;
 
@@ -354,13 +376,35 @@ mod tests {
         }
     }
 
+    struct StubAgent;
+
+    #[async_trait]
+    impl AgentHandle for StubAgent {
+        async fn describe(&self) -> AgentDescriptor {
+            AgentDescriptor {
+                name: "stub".into(),
+                version: "0.0.1".into(),
+                description: None,
+            }
+        }
+
+        async fn handle_message(
+            &self,
+            _input: AgentMessage,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<AgentMessage> {
+            Ok(AgentMessage {
+                role: MessageRole::Agent,
+                content: MessageContent::Text("stub-response".into()),
+                metadata: None,
+            })
+        }
+    }
+
     #[tokio::test]
     async fn task_router_reports_unknown_subagent() {
-        let subagents = Arc::new(RwLock::new(vec![SubAgentDescriptor {
-            name: "general-purpose".into(),
-            description: "General reasoning agent".into(),
-        }]));
-        let task_tool = TaskRouterTool::new(subagents.clone());
+        let registry = Arc::new(SubAgentRegistry::new(vec![]));
+        let task_tool = TaskRouterTool::new(registry.clone());
 
         let response = task_tool
             .invoke(ToolInvocation {
@@ -385,9 +429,12 @@ mod tests {
 
     #[tokio::test]
     async fn subagent_middleware_appends_prompt() {
-        let subagents = vec![SubAgentDescriptor {
-            name: "research-agent".into(),
-            description: "Deep research specialist".into(),
+        let subagents = vec![SubAgentRegistration {
+            descriptor: SubAgentDescriptor {
+                name: "research-agent".into(),
+                description: "Deep research specialist".into(),
+            },
+            agent: Arc::new(StubAgent),
         }];
         let middleware = SubAgentMiddleware::new(subagents);
 
@@ -403,5 +450,39 @@ mod tests {
             .map(|t| t.name().to_string())
             .collect();
         assert!(tool_names.contains(&"task".to_string()));
+    }
+
+    #[tokio::test]
+    async fn task_router_invokes_registered_subagent() {
+        let registry = Arc::new(SubAgentRegistry::new(vec![SubAgentRegistration {
+            descriptor: SubAgentDescriptor {
+                name: "stub-agent".into(),
+                description: "Stub".into(),
+            },
+            agent: Arc::new(StubAgent),
+        }]));
+        let task_tool = TaskRouterTool::new(registry.clone());
+        let response = task_tool
+            .invoke(ToolInvocation {
+                tool_name: "task".into(),
+                args: json!({
+                    "description": "do work",
+                    "subagent_type": "stub-agent"
+                }),
+                tool_call_id: Some("call-42".into()),
+            })
+            .await
+            .unwrap();
+
+        match response {
+            ToolResponse::Message(msg) => {
+                assert_eq!(msg.metadata.unwrap().tool_call_id.unwrap(), "call-42");
+                match msg.content {
+                    MessageContent::Text(text) => assert_eq!(text, "stub-response"),
+                    other => panic!("expected text, got {other:?}"),
+                }
+            }
+            _ => panic!("expected message"),
+        }
     }
 }

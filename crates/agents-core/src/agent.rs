@@ -57,6 +57,7 @@ pub enum PlannerAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlannerContext {
     pub history: Vec<AgentMessage>,
+    pub system_prompt: String,
 }
 
 /// Abstraction for hosting a fully configured agent (planner + tools + prompts).
