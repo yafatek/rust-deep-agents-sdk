@@ -12,6 +12,7 @@ use async_trait::async_trait;
 pub mod graph;
 pub mod middleware;
 pub mod planner;
+pub mod providers;
 
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>

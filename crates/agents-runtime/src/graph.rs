@@ -14,6 +14,9 @@ use crate::middleware::{
     MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware,
     SubAgentRegistration, SummarizationMiddleware,
 };
+use crate::planner::LlmBackedPlanner;
+use crate::providers::openai::{OpenAiChatModel, OpenAiConfig};
+use crate::providers::LlmProvider;
 
 /// Configuration for building a deep agent instance.
 pub struct DeepAgentConfig {
