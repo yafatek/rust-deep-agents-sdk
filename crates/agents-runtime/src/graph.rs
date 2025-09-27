@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 use agents_core::agent::{
@@ -25,6 +25,9 @@ use crate::providers::{
     OpenAiConfig,
 };
 
+// Built-in tool names exposed by middlewares. The `task` tool for subagents is not gated.
+const BUILTIN_TOOL_NAMES: &[&str] = &["write_todos", "ls", "read_file", "write_file", "edit_file"];
+
 /// Configuration for building a deep agent instance.
 pub struct DeepAgentConfig {
     pub instructions: String,
@@ -33,6 +36,7 @@ pub struct DeepAgentConfig {
     pub subagents: Vec<SubAgentRegistration>,
     pub summarization: Option<SummarizationConfig>,
     pub tool_interrupts: HashMap<String, HitlPolicy>,
+    pub builtin_tools: Option<HashSet<String>>,
 }
 
 #[derive(Clone)]
@@ -50,6 +54,7 @@ impl DeepAgentConfig {
             subagents: Vec::new(),
             summarization: None,
             tool_interrupts: HashMap::new(),
+            builtin_tools: None,
         }
     }
 
@@ -75,6 +80,19 @@ impl DeepAgentConfig {
 
     pub fn with_tool_interrupt(mut self, tool_name: impl Into<String>, policy: HitlPolicy) -> Self {
         self.tool_interrupts.insert(tool_name.into(), policy);
+        self
+    }
+
+    /// Limit which built-in tools are exposed. When omitted, all built-ins are available.
+    /// Built-ins: write_todos, ls, read_file, write_file, edit_file.
+    /// The `task` tool (for subagents) is always available when subagents are registered.
+    pub fn with_builtin_tools<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let set: HashSet<String> = names.into_iter().map(|s| s.into()).collect();
+        self.builtin_tools = Some(set);
         self
     }
 
@@ -152,6 +170,7 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
         _summarization: summarization,
         hitl,
         pending_hitl: Arc::new(RwLock::new(None)),
+        builtin_tools: config.builtin_tools,
     }
 }
 
@@ -166,6 +185,7 @@ pub struct DeepAgent {
     _summarization: Option<Arc<SummarizationMiddleware>>,
     hitl: Option<Arc<HumanInLoopMiddleware>>,
     pending_hitl: Arc<RwLock<Option<HitlPending>>>,
+    builtin_tools: Option<HashSet<String>>,
 }
 
 struct HitlPending {
@@ -183,10 +203,23 @@ impl DeepAgent {
         }
         for middleware in &self.middlewares {
             for tool in middleware.tools() {
-                tools.insert(tool.name().to_string(), tool);
+                if self.should_include(tool.name()) {
+                    tools.insert(tool.name().to_string(), tool);
+                }
             }
         }
         tools
+    }
+
+    fn should_include(&self, name: &str) -> bool {
+        let is_builtin = BUILTIN_TOOL_NAMES.iter().any(|n| *n == name);
+        if !is_builtin {
+            return true;
+        }
+        match &self.builtin_tools {
+            None => true,
+            Some(selected) => selected.contains(name),
+        }
     }
 
     fn append_history(&self, message: AgentMessage) {
@@ -455,6 +488,51 @@ mod tests {
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "hello"),
             other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    struct LsPlanner;
+
+    #[async_trait]
+    impl PlannerHandle for LsPlanner {
+        async fn plan(
+            &self,
+            _context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::CallTool {
+                    tool_name: "ls".into(),
+                    payload: json!({}),
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn builtin_tools_can_be_filtered() {
+        let planner = Arc::new(LsPlanner);
+        // Allow only write_todos; ls should be filtered out
+        let agent = create_deep_agent(
+            DeepAgentConfig::new("Assist", planner).with_builtin_tools(["write_todos"]),
+        );
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("list files".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        if let MessageContent::Text(text) = response.content {
+            assert!(text.contains("Tool 'ls' not available"));
+        } else {
+            panic!("expected text response");
         }
     }
 
