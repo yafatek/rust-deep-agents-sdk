@@ -1,0 +1,29 @@
+# Build artifacts
+/target
+**/target/
+
+# Rust tooling
+**/*.rs.bk
+/.cargo/
+/docs/deepagents 
+# Package managers & metadata
+node_modules/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.crash*
+.terraform/
+.terraform.tfstate*
+
+# Editor & OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs & coverage
+*.log
+coverage/
+
