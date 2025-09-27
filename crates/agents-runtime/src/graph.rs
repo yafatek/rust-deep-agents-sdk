@@ -5,6 +5,7 @@ use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle, ToolHandle,
     ToolResponse,
 };
+use agents_core::llm::LanguageModel;
 use agents_core::messaging::{AgentMessage, MessageContent, MessageMetadata, MessageRole};
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
@@ -15,8 +16,10 @@ use crate::middleware::{
     SubAgentRegistration, SummarizationMiddleware,
 };
 use crate::planner::LlmBackedPlanner;
-use crate::providers::openai::{OpenAiChatModel, OpenAiConfig};
-use crate::providers::LlmProvider;
+use crate::providers::{
+    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
+    OpenAiConfig,
+};
 
 /// Configuration for building a deep agent instance.
 pub struct DeepAgentConfig {
@@ -69,6 +72,33 @@ impl DeepAgentConfig {
     pub fn with_tool_interrupt(mut self, tool_name: impl Into<String>, policy: HitlPolicy) -> Self {
         self.tool_interrupts.insert(tool_name.into(), policy);
         self
+    }
+
+    pub fn with_openai_chat(
+        instructions: impl Into<String>,
+        config: OpenAiConfig,
+    ) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(OpenAiChatModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(Self::new(instructions, planner))
+    }
+
+    pub fn with_anthropic_messages(
+        instructions: impl Into<String>,
+        config: AnthropicConfig,
+    ) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(AnthropicMessagesModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(Self::new(instructions, planner))
+    }
+
+    pub fn with_gemini_chat(
+        instructions: impl Into<String>,
+        config: GeminiConfig,
+    ) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(GeminiChatModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(Self::new(instructions, planner))
     }
 }
 

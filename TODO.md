@@ -9,7 +9,8 @@
 - [x] Add language model abstraction and planner translating LLM output to actions.
 - [x] Wire real subagent dispatch through `task` tool and propagate state/messages.
 - [x] Introduce summarization and human-in-the-loop middleware with configuration hooks.
-- [ ] Integrate concrete LLM backend adapters (Anthropic/Bedrock) and prompt templates.
+- [x] Integrate concrete LLM backend adapters (OpenAI/Anthropic/Gemini) and prompt templates.
+- [ ] Add additional LLM adapters (Bedrock, Ollama, HuggingFace) and shared configuration helpers.
 - [ ] Flesh out human-in-the-loop approval resume flow (interrupt handling, policy enforcement).
 - [ ] Add persistence layer adapters (DynamoDB/S3) and Terraform modules.
 - [ ] Provide CLI/example for WhatsApp webhook integration using SDK.
