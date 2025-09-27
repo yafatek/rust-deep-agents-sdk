@@ -70,6 +70,50 @@ pub trait AgentMiddleware: Send + Sync {
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()>;
 }
 
+pub struct SummarizationMiddleware {
+    pub messages_to_keep: usize,
+    pub summary_note: String,
+}
+
+impl SummarizationMiddleware {
+    pub fn new(messages_to_keep: usize, summary_note: impl Into<String>) -> Self {
+        Self {
+            messages_to_keep,
+            summary_note: summary_note.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for SummarizationMiddleware {
+    fn id(&self) -> &'static str {
+        "summarization"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        if ctx.request.messages.len() > self.messages_to_keep {
+            let dropped = ctx.request.messages.len() - self.messages_to_keep;
+            let mut truncated = ctx
+                .request
+                .messages
+                .split_off(ctx.request.messages.len() - self.messages_to_keep);
+            truncated.insert(
+                0,
+                AgentMessage {
+                    role: MessageRole::System,
+                    content: MessageContent::Text(format!(
+                        "{} ({} earlier messages summarized)",
+                        self.summary_note, dropped
+                    )),
+                    metadata: None,
+                },
+            );
+            ctx.request.messages = truncated;
+        }
+        Ok(())
+    }
+}
+
 pub struct PlanningMiddleware {
     state: Arc<RwLock<AgentStateSnapshot>>,
 }
@@ -215,6 +259,62 @@ impl AgentMiddleware for SubAgentMiddleware {
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
         ctx.request.append_prompt(TASK_SYSTEM_PROMPT);
         ctx.request.append_prompt(&self.prompt_fragment());
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HitlPolicy {
+    pub allow_auto: bool,
+    pub note: Option<String>,
+}
+
+pub struct HumanInLoopMiddleware {
+    policies: HashMap<String, HitlPolicy>,
+}
+
+impl HumanInLoopMiddleware {
+    pub fn new(policies: HashMap<String, HitlPolicy>) -> Self {
+        Self { policies }
+    }
+
+    pub fn requires_approval(&self, tool_name: &str) -> Option<&HitlPolicy> {
+        self.policies
+            .get(tool_name)
+            .filter(|policy| !policy.allow_auto)
+    }
+
+    fn prompt_fragment(&self) -> Option<String> {
+        let pending: Vec<String> = self
+            .policies
+            .iter()
+            .filter(|(_, policy)| !policy.allow_auto)
+            .map(|(tool, policy)| match &policy.note {
+                Some(note) => format!("- {tool}: {note}"),
+                None => format!("- {tool}: Requires approval"),
+            })
+            .collect();
+        if pending.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "The following tools require human approval before execution:\n{}",
+                pending.join("\n")
+            ))
+        }
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for HumanInLoopMiddleware {
+    fn id(&self) -> &'static str {
+        "human-in-loop"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        if let Some(fragment) = self.prompt_fragment() {
+            ctx.request.append_prompt(&fragment);
+        }
         Ok(())
     }
 }
@@ -376,6 +476,39 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn summarization_middleware_trims_messages() {
+        let middleware = SummarizationMiddleware::new(2, "Summary note");
+        let mut request = ModelRequest::new(
+            "System",
+            vec![
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("one".into()),
+                    metadata: None,
+                },
+                AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Text("two".into()),
+                    metadata: None,
+                },
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("three".into()),
+                    metadata: None,
+                },
+            ],
+        );
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+        assert_eq!(ctx.request.messages.len(), 3);
+        match &ctx.request.messages[0].content {
+            MessageContent::Text(text) => assert!(text.contains("Summary note")),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
     struct StubAgent;
 
     #[async_trait]
@@ -484,5 +617,24 @@ mod tests {
             }
             _ => panic!("expected message"),
         }
+    }
+
+    #[tokio::test]
+    async fn human_in_loop_appends_prompt() {
+        let middleware = HumanInLoopMiddleware::new(HashMap::from([(
+            "danger-tool".into(),
+            HitlPolicy {
+                allow_auto: false,
+                note: Some("Requires security review".into()),
+            },
+        )]));
+        let mut request = ModelRequest::new("System", vec![]);
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+        assert!(ctx
+            .request
+            .system_prompt
+            .contains("danger-tool: Requires security review"));
     }
 }

@@ -10,8 +10,9 @@ use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 
 use crate::middleware::{
-    BaseSystemPromptMiddleware, FilesystemMiddleware, MiddlewareContext, ModelRequest,
-    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
+    BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy, HumanInLoopMiddleware,
+    MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware,
+    SubAgentRegistration, SummarizationMiddleware,
 };
 
 /// Configuration for building a deep agent instance.
@@ -20,6 +21,14 @@ pub struct DeepAgentConfig {
     pub planner: Arc<dyn PlannerHandle>,
     pub tools: Vec<Arc<dyn ToolHandle>>,
     pub subagents: Vec<SubAgentRegistration>,
+    pub summarization: Option<SummarizationConfig>,
+    pub tool_interrupts: HashMap<String, HitlPolicy>,
+}
+
+#[derive(Clone)]
+pub struct SummarizationConfig {
+    pub messages_to_keep: usize,
+    pub summary_note: String,
 }
 
 impl DeepAgentConfig {
@@ -29,6 +38,8 @@ impl DeepAgentConfig {
             planner,
             tools: Vec::new(),
             subagents: Vec::new(),
+            summarization: None,
+            tool_interrupts: HashMap::new(),
         }
     }
 
@@ -46,6 +57,16 @@ impl DeepAgentConfig {
             .push(SubAgentRegistration { descriptor, agent });
         self
     }
+
+    pub fn with_summarization(mut self, config: SummarizationConfig) -> Self {
+        self.summarization = Some(config);
+        self
+    }
+
+    pub fn with_tool_interrupt(mut self, tool_name: impl Into<String>, policy: HitlPolicy) -> Self {
+        self.tool_interrupts.insert(tool_name.into(), policy);
+        self
+    }
 }
 
 pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
@@ -56,6 +77,28 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
     let subagent = Arc::new(SubAgentMiddleware::new(config.subagents.clone()));
     let base_prompt = Arc::new(BaseSystemPromptMiddleware);
+    let summarization = config.summarization.as_ref().map(|cfg| {
+        Arc::new(SummarizationMiddleware::new(
+            cfg.messages_to_keep,
+            cfg.summary_note.clone(),
+        ))
+    });
+    let hitl = if config.tool_interrupts.is_empty() {
+        None
+    } else {
+        Some(Arc::new(HumanInLoopMiddleware::new(
+            config.tool_interrupts.clone(),
+        )))
+    };
+
+    let mut middlewares: Vec<Arc<dyn crate::middleware::AgentMiddleware>> =
+        vec![base_prompt, planning, filesystem, subagent];
+    if let Some(ref summary) = summarization {
+        middlewares.push(summary.clone());
+    }
+    if let Some(ref hitl_mw) = hitl {
+        middlewares.push(hitl_mw.clone());
+    }
 
     DeepAgent {
         descriptor: AgentDescriptor {
@@ -65,10 +108,12 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
         },
         instructions: config.instructions,
         planner: config.planner,
-        middlewares: vec![base_prompt, planning, filesystem, subagent],
+        middlewares,
         base_tools: config.tools,
         state,
         history,
+        _summarization: summarization,
+        hitl,
     }
 }
 
@@ -80,6 +125,8 @@ pub struct DeepAgent {
     base_tools: Vec<Arc<dyn ToolHandle>>,
     state: Arc<RwLock<AgentStateSnapshot>>,
     history: Arc<RwLock<Vec<AgentMessage>>>,
+    _summarization: Option<Arc<SummarizationMiddleware>>,
+    hitl: Option<Arc<HumanInLoopMiddleware>>,
 }
 
 impl DeepAgent {
@@ -141,6 +188,25 @@ impl AgentHandle for DeepAgent {
                 Ok(message)
             }
             PlannerAction::CallTool { tool_name, payload } => {
+                if let Some(hitl) = &self.hitl {
+                    if let Some(policy) = hitl.requires_approval(&tool_name) {
+                        let message_text = policy
+                            .note
+                            .clone()
+                            .unwrap_or_else(|| "Awaiting human approval.".into());
+                        let approval_message = AgentMessage {
+                            role: MessageRole::System,
+                            content: MessageContent::Text(format!(
+                                "Tool '{tool}' requires approval: {message}",
+                                tool = tool_name,
+                                message = message_text
+                            )),
+                            metadata: None,
+                        };
+                        self.append_history(approval_message.clone());
+                        return Ok(approval_message);
+                    }
+                }
                 if let Some(tool) = tools.get(&tool_name) {
                     let response = tool
                         .invoke(agents_core::messaging::ToolInvocation {
@@ -327,6 +393,121 @@ mod tests {
         assert!(matches!(response.role, MessageRole::Tool));
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "delegated-result"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    struct AlwaysRespondPlanner;
+
+    #[async_trait]
+    impl PlannerHandle for AlwaysRespondPlanner {
+        async fn plan(
+            &self,
+            context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::Respond {
+                    message: AgentMessage {
+                        role: MessageRole::Agent,
+                        content: MessageContent::Text(
+                            context
+                                .history
+                                .last()
+                                .and_then(|m| m.content.as_text())
+                                .unwrap_or("")
+                                .to_string(),
+                        ),
+                        metadata: None,
+                    },
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn deep_agent_applies_summarization() {
+        let planner = Arc::new(AlwaysRespondPlanner);
+        let agent = create_deep_agent(DeepAgentConfig::new("Assist", planner).with_summarization(
+            SummarizationConfig {
+                messages_to_keep: 1,
+                summary_note: "Summary".into(),
+            },
+        ));
+
+        agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("first".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("second".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        if let MessageContent::Text(text) = response.content {
+            assert_eq!(text, "second");
+        }
+    }
+
+    struct ToolPlanner;
+
+    #[async_trait]
+    impl PlannerHandle for ToolPlanner {
+        async fn plan(
+            &self,
+            _context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::CallTool {
+                    tool_name: "sensitive".into(),
+                    payload: json!({}),
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn deep_agent_requires_hitl() {
+        let planner = Arc::new(ToolPlanner);
+        let config = DeepAgentConfig::new("Assist", planner).with_tool_interrupt(
+            "sensitive",
+            HitlPolicy {
+                allow_auto: false,
+                note: Some("Needs approval".into()),
+            },
+        );
+        let agent = create_deep_agent(config);
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("call tool".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        match response.content {
+            MessageContent::Text(text) => assert!(text.contains("Needs approval")),
             other => panic!("expected text, got {other:?}"),
         }
     }
