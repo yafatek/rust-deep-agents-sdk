@@ -6,10 +6,14 @@ description = "Async runtime orchestration for Rust deep agents."
 
 [dependencies]
 agents-core = { path = "../agents-core" }
+agents-toolkit = { path = "../agents-toolkit" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
 tokio = { workspace = true }

@@ -9,6 +9,9 @@ use agents_core::messaging::AgentMessage;
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 
+pub mod graph;
+pub mod middleware;
+
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>
 where

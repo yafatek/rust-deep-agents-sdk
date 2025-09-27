@@ -59,6 +59,7 @@ name = "agents-runtime"
 version = "0.0.1"
 dependencies = [
  "agents-core",
+ "agents-toolkit",
  "anyhow",
  "async-trait",
  "serde",
