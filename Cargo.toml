@@ -5,6 +5,7 @@ members = [
     "crates/agents-toolkit",
     "crates/agents-aws",
     "examples/getting-started",
+    "examples/cli-agent",
 ]
 resolver = "2"
 

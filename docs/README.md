@@ -7,3 +7,10 @@ This repository hosts a Rust-first framework for composing "deep" AI agents that
 - Keep customer-specific playbooks under `docs/playbooks/` so reusable guidance remains separate from core SDK docs.
 
 > Legacy reference material from earlier experiments lives in `docs/reference/`; retain it only when it informs the Rust port.
+
+## Latest Decisions
+- ADR-0001: Prefer CLI harness over WhatsApp for the initial prototype (`docs/adr/0001-cli-harness-over-whatsapp.md`).
+
+## Backlog Highlights
+- Provider adapters: Bedrock, Ollama, HuggingFace with shared configuration helpers.
+- Persistence + Terraform modules: DynamoDB/S3 adapters and AWS deployment modules under `deploy/`.
