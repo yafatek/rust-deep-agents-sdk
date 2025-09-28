@@ -18,7 +18,7 @@ use serde_json::Value;
 use crate::middleware::{
     AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy,
     HumanInLoopMiddleware, MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor,
-    SubAgentMiddleware, SubAgentRegistration, SummarizationMiddleware,
+    SubAgentMiddleware, SubAgentRegistration, SummarizationMiddleware, AgentMiddleware,
 };
 use crate::planner::LlmBackedPlanner;
 use crate::providers::{
@@ -65,6 +65,15 @@ pub struct SubAgentConfig {
     pub instructions: String,
     pub tools: Option<Vec<Arc<dyn ToolHandle>>>,
     pub planner: Option<Arc<dyn PlannerHandle>>,
+}
+
+impl IntoIterator for SubAgentConfig {
+    type Item = SubAgentConfig;
+    type IntoIter = std::iter::Once<SubAgentConfig>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(self)
+    }
 }
 
 /// Builder API to assemble a DeepAgent in a single fluent flow, mirroring the Python
@@ -142,8 +151,34 @@ impl ConfigurableAgentBuilder {
         self
     }
 
-    pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
-        self.subagents.push(cfg);
+    pub fn with_subagent_config<I>(mut self, cfgs: I) -> Self
+    where
+        I: IntoIterator<Item = SubAgentConfig>,
+    {
+        self.subagents.extend(cfgs);
+        self
+    }
+
+    /// Convenience method: automatically create subagents from a list of tools.
+    /// Each tool becomes a specialized subagent with that single tool.
+    pub fn with_subagent_tools<I>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Arc<dyn ToolHandle>>,
+    {
+        for tool in tools {
+            let tool_name = tool.name();
+            let subagent_config = SubAgentConfig {
+                name: format!("{}-agent", tool_name),
+                description: format!("Specialized agent for {} operations", tool_name),
+                instructions: format!(
+                    "You are a specialized agent. Use the {} tool to complete tasks efficiently.",
+                    tool_name
+                ),
+                tools: Some(vec![tool]),
+                planner: None, // Will inherit from parent
+            };
+            self.subagents.push(subagent_config);
+        }
         self
     }
 
@@ -182,7 +217,7 @@ impl ConfigurableAgentBuilder {
     }
 
     pub fn build(self) -> anyhow::Result<DeepAgent> {
-        self.finalize(create_deep_agent)
+        self.finalize(create_deep_agent_from_config)
     }
 
     /// Build an agent using the async constructor alias. This mirrors the Python
@@ -316,37 +351,40 @@ impl DeepAgentConfig {
     }
 
     /// Convenience: construct and register a subagent from a simple configuration bundle.
-    pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
-        let planner = cfg.planner.unwrap_or_else(|| self.planner.clone());
-        let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
-            .with_auto_general_purpose(false)
-            .with_prompt_caching(self.enable_prompt_caching);
-        if let Some(ref selected) = self.builtin_tools {
-            sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
-        }
-        if let Some(ref sum) = self.summarization {
-            sub_cfg = sub_cfg.with_summarization(sum.clone());
-        }
-        // Tool interrupts are not inherited by default; subagents typically do not need host HITL policies.
-        // Attach provided tools or inherit the base tools.
-        if let Some(tools) = cfg.tools {
-            for t in tools {
-                sub_cfg = sub_cfg.with_tool(t);
+    pub fn with_subagent_config<I>(mut self, cfgs: I) -> Self
+    where
+        I: IntoIterator<Item = SubAgentConfig>,
+    {
+        for cfg in cfgs {
+            let planner = cfg.planner.unwrap_or_else(|| self.planner.clone());
+            let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
+                .with_auto_general_purpose(false)
+                .with_prompt_caching(self.enable_prompt_caching);
+            if let Some(ref selected) = self.builtin_tools {
+                sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }
-        } else {
-            for t in &self.tools {
-                sub_cfg = sub_cfg.with_tool(t.clone());
+            if let Some(ref sum) = self.summarization {
+                sub_cfg = sub_cfg.with_summarization(sum.clone());
             }
-        }
+            if let Some(tools) = cfg.tools {
+                for t in tools {
+                    sub_cfg = sub_cfg.with_tool(t);
+                }
+            } else {
+                for t in &self.tools {
+                    sub_cfg = sub_cfg.with_tool(t.clone());
+                }
+            }
 
-        let sub_agent = create_deep_agent(sub_cfg);
-        self = self.with_subagent(
-            SubAgentDescriptor {
-                name: cfg.name,
-                description: cfg.description,
-            },
-            Arc::new(sub_agent),
-        );
+            let sub_agent = create_deep_agent_from_config(sub_cfg);
+            self = self.with_subagent(
+                SubAgentDescriptor {
+                    name: cfg.name,
+                    description: cfg.description,
+                },
+                Arc::new(sub_agent),
+            );
+        }
         self
     }
 
@@ -378,7 +416,85 @@ impl DeepAgentConfig {
     }
 }
 
-pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
+pub struct CreateDeepAgentParams {
+    pub tools: Vec<Arc<dyn ToolHandle>>,
+    pub instructions: String,
+    pub middleware: Vec<Arc<dyn AgentMiddleware>>,
+    pub model: Option<Arc<dyn LanguageModel>>,
+    pub subagents: Vec<SubAgentConfig>,
+    pub context_schema: Option<String>,
+    pub checkpointer: Option<Arc<dyn Checkpointer>>,
+    pub tool_configs: HashMap<String, HitlPolicy>,
+}
+
+impl Default for CreateDeepAgentParams {
+    fn default() -> Self {
+        Self {
+            tools: Vec::new(),
+            instructions: String::new(),
+            middleware: Vec::new(),
+            model: None,
+            subagents: Vec::new(),
+            context_schema: None,
+            checkpointer: None,
+            tool_configs: HashMap::new(),
+        }
+    }
+}
+
+/// Create a deep agent - matches Python create_deep_agent() API exactly
+pub fn create_deep_agent(params: CreateDeepAgentParams) -> anyhow::Result<DeepAgent> {
+    let CreateDeepAgentParams {
+        tools,
+        instructions,
+        middleware,
+        model,
+        subagents,
+        context_schema,
+        checkpointer,
+        tool_configs,
+    } = params;
+
+    if context_schema.is_some() {
+        tracing::warn!(
+            "context_schema parameter for create_deep_agent is not yet supported in Rust SDK"
+        );
+    }
+
+    if !middleware.is_empty() {
+        tracing::warn!("middleware parameter for create_deep_agent is not yet supported in Rust SDK ({} entries)", middleware.len());
+    }
+
+    let mut builder = ConfigurableAgentBuilder::new(instructions);
+
+    let model = match model {
+        Some(model) => model,
+        None => get_default_model()?,
+    };
+    builder = builder.with_model(model);
+
+    if !tools.is_empty() {
+        builder = builder.with_tools(tools);
+    }
+
+    if !subagents.is_empty() {
+        builder = builder.with_subagent_config(subagents);
+    }
+
+    if let Some(checkpointer) = checkpointer {
+        builder = builder.with_checkpointer(checkpointer);
+    }
+
+    if !tool_configs.is_empty() {
+        for (tool, policy) in tool_configs {
+            builder = builder.with_tool_interrupt(tool, policy);
+        }
+    }
+
+    builder.build()
+}
+
+pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
     let history = Arc::new(RwLock::new(Vec::<AgentMessage>::new()));
 
@@ -406,7 +522,7 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
                 sub_cfg = sub_cfg.with_tool(t.clone());
             }
 
-            let gp = create_deep_agent(sub_cfg);
+            let gp = create_deep_agent_from_config(sub_cfg);
             registrations.push(SubAgentRegistration {
                 descriptor: SubAgentDescriptor {
                     name: "general-purpose".into(),
@@ -469,7 +585,7 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
 /// runtime already executes every tool and planner call asynchronously, so this
 /// currently delegates to `create_deep_agent`.
 pub fn create_async_deep_agent(config: DeepAgentConfig) -> DeepAgent {
-    create_deep_agent(config)
+    create_deep_agent_from_config(config)
 }
 
 pub struct DeepAgent {
@@ -842,7 +958,7 @@ mod tests {
     #[tokio::test]
     async fn deep_agent_echoes() {
         let planner = Arc::new(EchoPlanner);
-        let agent = create_deep_agent(DeepAgentConfig::new("Be helpful", planner));
+        let agent = create_deep_agent_from_config(DeepAgentConfig::new("Be helpful", planner));
 
         let response = send_user(&agent, "hello").await;
 
@@ -874,7 +990,7 @@ mod tests {
     async fn builtin_tools_can_be_filtered() {
         let planner = Arc::new(LsPlanner);
         // Allow only write_todos; ls should be filtered out
-        let agent = create_deep_agent(
+        let agent = create_deep_agent_from_config(
             DeepAgentConfig::new("Assist", planner).with_builtin_tools(["write_todos"]),
         );
 
@@ -943,7 +1059,7 @@ mod tests {
             },
             Arc::new(StubSubAgent),
         );
-        let agent = create_deep_agent(config);
+        let agent = create_deep_agent_from_config(config);
 
         let response = send_user(&agent, "delegate").await;
 
@@ -1004,7 +1120,7 @@ mod tests {
         let gp_planner = Arc::new(AlwaysTextPlanner("gp-ok"));
         // Build agent but override planner for the GP by setting it as the main planner
         // and ensuring GP inherits it
-        let agent = create_deep_agent(DeepAgentConfig::new("Assist", gp_planner));
+        let agent = create_deep_agent_from_config(DeepAgentConfig::new("Assist", gp_planner));
 
         let response = send_user(&agent, "delegate to gp").await;
 
@@ -1018,7 +1134,7 @@ mod tests {
     async fn subagent_convenience_builder_registers_and_delegates() {
         let main_planner = Arc::new(DelegatePlanner);
         let custom_planner = Arc::new(AlwaysTextPlanner("custom-ok"));
-        let agent = create_deep_agent(
+        let agent = create_deep_agent_from_config(
             DeepAgentConfig::new("Assist", main_planner).with_subagent_config(SubAgentConfig {
                 name: "stub-agent".into(),
                 description: "Stub Agent".into(),
@@ -1067,7 +1183,7 @@ mod tests {
     #[tokio::test]
     async fn deep_agent_applies_summarization() {
         let planner = Arc::new(AlwaysRespondPlanner);
-        let agent = create_deep_agent(DeepAgentConfig::new("Assist", planner).with_summarization(
+        let agent = create_deep_agent_from_config(DeepAgentConfig::new("Assist", planner).with_summarization(
             SummarizationConfig {
                 messages_to_keep: 1,
                 summary_note: "Summary".into(),
@@ -1129,7 +1245,7 @@ mod tests {
                     note: Some("Needs approval".into()),
                 },
             );
-        let agent = create_deep_agent(config);
+        let agent = create_deep_agent_from_config(config);
 
         let response = send_user(&agent, "call tool").await;
 
@@ -1173,7 +1289,7 @@ mod tests {
                     note: Some("Needs approval".into()),
                 },
             );
-        let agent = create_deep_agent(config);
+        let agent = create_deep_agent_from_config(config);
 
         let response = send_user(&agent, "call tool").await;
         match response.content {

@@ -11,6 +11,21 @@ pub struct OpenAiConfig {
     pub api_url: Option<String>,
 }
 
+impl OpenAiConfig {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            api_url: None,
+        }
+    }
+
+    pub fn with_api_url(mut self, api_url: Option<String>) -> Self {
+        self.api_url = api_url;
+        self
+    }
+}
+
 pub struct OpenAiChatModel {
     client: Client,
     config: OpenAiConfig,

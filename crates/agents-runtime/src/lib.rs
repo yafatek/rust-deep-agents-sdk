@@ -15,7 +15,7 @@ pub mod planner;
 pub mod providers;
 
 // Re-export key functions for convenience
-pub use graph::get_default_model;
+pub use graph::{create_deep_agent, create_deep_agent_from_config, get_default_model};
 
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>

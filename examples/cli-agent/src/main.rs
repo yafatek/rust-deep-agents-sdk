@@ -12,7 +12,7 @@ use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
 use agents_core::state::AgentStateSnapshot;
-use agents_runtime::graph::{create_deep_agent, DeepAgentConfig, SummarizationConfig};
+use agents_runtime::graph::{create_deep_agent_from_config, DeepAgentConfig, SummarizationConfig};
 use agents_runtime::middleware::SubAgentDescriptor;
 use agents_runtime::providers::openai::OpenAiConfig;
 use async_trait::async_trait;
@@ -340,11 +340,9 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
 
     // Build planner using OpenAI and our example-local planner wrapper
     let main_model: Arc<dyn LanguageModel> = Arc::new(
-        agents_runtime::providers::openai::OpenAiChatModel::new(OpenAiConfig {
-            api_key: api_key.clone(),
-            model: model.clone(),
-            api_url: api_url.clone(),
-        })?,
+        agents_runtime::providers::openai::OpenAiChatModel::new(
+            OpenAiConfig::new(api_key.clone(), model.clone()).with_api_url(api_url.clone()),
+        )?,
     );
     let main_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(main_model));
     let mut cfg = DeepAgentConfig::new(instructions, main_planner);
@@ -359,11 +357,9 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
     if let Ok(tavily_key) = env::var("TAVILY_API_KEY") {
         let tavily_url = env::var("TAVILY_API_URL").ok();
         let web_model: Arc<dyn LanguageModel> = Arc::new(
-            agents_runtime::providers::openai::OpenAiChatModel::new(OpenAiConfig {
-                api_key: api_key.clone(),
-                model: model.clone(),
-                api_url: api_url.clone(),
-            })?,
+            agents_runtime::providers::openai::OpenAiChatModel::new(
+                OpenAiConfig::new(api_key.clone(), model.clone()).with_api_url(api_url.clone()),
+            )?,
         );
         let web_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(web_model));
         let web_cfg = DeepAgentConfig::new(
@@ -378,7 +374,7 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
             "tavily_search",
             TavilyConfig { api_key: tavily_key, api_url: tavily_url },
         )?));
-        let web_agent = create_deep_agent(web_cfg);
+        let web_agent = create_deep_agent_from_config(web_cfg);
         cfg = cfg.with_subagent(
             SubAgentDescriptor {
                 name: "web-researcher".into(),
@@ -391,7 +387,7 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
         tracing::info!("TAVILY_API_KEY not set — web-researcher subagent disabled");
     }
 
-    let agent = create_deep_agent(cfg);
+    let agent = create_deep_agent_from_config(cfg);
     println!("Deep Agent CLI (model: {})", model);
     println!("Type messages. Commands: /approve, /reject [reason], /respond <msg>, /exit");
     if auto_steps > 0 {
