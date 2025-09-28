@@ -1,12 +1,12 @@
 # Build artifacts
 /target
 **/target/
-
+.env
+docs/reference
+*.mdc
 # Rust tooling
 **/*.rs.bk
 /.cargo/
-/docs/deepagents 
-/docs/reference/
 # Package managers & metadata
 node_modules/
 

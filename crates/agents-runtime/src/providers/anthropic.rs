@@ -1,0 +1,186 @@
+use agents_core::llm::{LanguageModel, LlmRequest, LlmResponse};
+use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
+use async_trait::async_trait;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone)]
+pub struct AnthropicConfig {
+    pub api_key: String,
+    pub model: String,
+    pub max_output_tokens: u32,
+    pub api_url: Option<String>,
+    pub api_version: Option<String>,
+}
+
+pub struct AnthropicMessagesModel {
+    client: Client,
+    config: AnthropicConfig,
+}
+
+impl AnthropicMessagesModel {
+    pub fn new(config: AnthropicConfig) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: Client::builder()
+                .user_agent("rust-deep-agents-sdk/0.1")
+                .build()?,
+            config,
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct AnthropicRequest {
+    model: String,
+    max_tokens: u32,
+    system: String,
+    messages: Vec<AnthropicMessage>,
+}
+
+#[derive(Serialize)]
+struct AnthropicMessage {
+    role: String,
+    content: Vec<AnthropicContentBlock>,
+}
+
+#[derive(Serialize)]
+struct AnthropicContentBlock {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<AnthropicCacheControl>,
+}
+
+#[derive(Serialize)]
+struct AnthropicCacheControl {
+    #[serde(rename = "type")]
+    cache_type: String,
+}
+
+#[derive(Deserialize)]
+struct AnthropicResponse {
+    content: Vec<AnthropicResponseBlock>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicResponseBlock {
+    #[serde(rename = "type")]
+    kind: String,
+    text: Option<String>,
+}
+
+fn to_anthropic_messages(request: &LlmRequest) -> (String, Vec<AnthropicMessage>) {
+    let mut system_prompt = request.system_prompt.clone();
+    let mut messages = Vec::new();
+
+    for message in &request.messages {
+        let text = match &message.content {
+            MessageContent::Text(text) => text.clone(),
+            MessageContent::Json(value) => value.to_string(),
+        };
+
+        // Handle system messages specially - they should be part of the system prompt
+        if matches!(message.role, MessageRole::System) {
+            if !system_prompt.is_empty() {
+                system_prompt.push_str("\n\n");
+            }
+            system_prompt.push_str(&text);
+            continue;
+        }
+
+        let role = match message.role {
+            MessageRole::User => "user",
+            MessageRole::Agent => "assistant",
+            MessageRole::Tool => "user",
+            MessageRole::System => unreachable!(), // Handled above
+        };
+
+        // Convert cache control if present
+        let cache_control = message
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.cache_control.as_ref())
+            .map(|cc| AnthropicCacheControl {
+                cache_type: cc.cache_type.clone(),
+            });
+
+        messages.push(AnthropicMessage {
+            role: role.to_string(),
+            content: vec![AnthropicContentBlock {
+                kind: "text",
+                text,
+                cache_control,
+            }],
+        });
+    }
+
+    (system_prompt, messages)
+}
+
+#[async_trait]
+impl LanguageModel for AnthropicMessagesModel {
+    async fn generate(&self, request: LlmRequest) -> anyhow::Result<LlmResponse> {
+        let (system_prompt, messages) = to_anthropic_messages(&request);
+        let body = AnthropicRequest {
+            model: self.config.model.clone(),
+            max_tokens: self.config.max_output_tokens,
+            system: system_prompt,
+            messages,
+        };
+
+        let url = self
+            .config
+            .api_url
+            .as_deref()
+            .unwrap_or("https://api.anthropic.com/v1/messages");
+        let version = self.config.api_version.as_deref().unwrap_or("2023-06-01");
+
+        let response = self
+            .client
+            .post(url)
+            .header("x-api-key", &self.config.api_key)
+            .header("anthropic-version", version)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let data: AnthropicResponse = response.json().await?;
+        let text = data
+            .content
+            .into_iter()
+            .find_map(|block| (block.kind == "text").then(|| block.text.unwrap_or_default()))
+            .unwrap_or_default();
+
+        Ok(LlmResponse {
+            message: AgentMessage {
+                role: MessageRole::Agent,
+                content: MessageContent::Text(text),
+                metadata: None,
+            },
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anthropic_message_conversion_includes_system_prompt() {
+        let request = LlmRequest {
+            system_prompt: "You are helpful".into(),
+            messages: vec![AgentMessage {
+                role: MessageRole::User,
+                content: MessageContent::Text("Hello".into()),
+                metadata: None,
+            }],
+        };
+        let (system, messages) = to_anthropic_messages(&request);
+        assert_eq!(system, "You are helpful");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].content[0].text, "Hello");
+    }
+}

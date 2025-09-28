@@ -1,6 +1,7 @@
 //! Toolkit of default tools and helpers mirroring the Python reference implementation.
 //! Includes filesystem manipulation tools, todo list management, and planning scaffolds.
 
+pub mod adapters;
 pub mod filesystem;
 pub mod todos;
 
@@ -15,6 +16,7 @@ use agents_core::messaging::{
 pub(crate) fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
     invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
         tool_call_id: Some(id.clone()),
+        cache_control: None,
     })
 }
 

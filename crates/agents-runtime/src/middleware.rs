@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use agents_core::agent::{AgentHandle, ToolHandle, ToolResponse};
 use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
 use agents_core::prompts::{
     BASE_AGENT_PROMPT, FILESYSTEM_SYSTEM_PROMPT, TASK_SYSTEM_PROMPT, TASK_TOOL_DESCRIPTION,
@@ -68,6 +68,50 @@ pub trait AgentMiddleware: Send + Sync {
 
     /// Apply middleware-specific mutations to the pending model request.
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()>;
+}
+
+pub struct SummarizationMiddleware {
+    pub messages_to_keep: usize,
+    pub summary_note: String,
+}
+
+impl SummarizationMiddleware {
+    pub fn new(messages_to_keep: usize, summary_note: impl Into<String>) -> Self {
+        Self {
+            messages_to_keep,
+            summary_note: summary_note.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for SummarizationMiddleware {
+    fn id(&self) -> &'static str {
+        "summarization"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        if ctx.request.messages.len() > self.messages_to_keep {
+            let dropped = ctx.request.messages.len() - self.messages_to_keep;
+            let mut truncated = ctx
+                .request
+                .messages
+                .split_off(ctx.request.messages.len() - self.messages_to_keep);
+            truncated.insert(
+                0,
+                AgentMessage {
+                    role: MessageRole::System,
+                    content: MessageContent::Text(format!(
+                        "{} ({} earlier messages summarized)",
+                        self.summary_note, dropped
+                    )),
+                    metadata: None,
+                },
+            );
+            ctx.request.messages = truncated;
+        }
+        Ok(())
+    }
 }
 
 pub struct PlanningMiddleware {
@@ -219,6 +263,70 @@ impl AgentMiddleware for SubAgentMiddleware {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct HitlPolicy {
+    pub allow_auto: bool,
+    pub note: Option<String>,
+}
+
+pub struct HumanInLoopMiddleware {
+    policies: HashMap<String, HitlPolicy>,
+}
+
+impl HumanInLoopMiddleware {
+    pub fn new(policies: HashMap<String, HitlPolicy>) -> Self {
+        Self { policies }
+    }
+
+    pub fn requires_approval(&self, tool_name: &str) -> Option<&HitlPolicy> {
+        self.policies
+            .get(tool_name)
+            .filter(|policy| !policy.allow_auto)
+    }
+
+    fn prompt_fragment(&self) -> Option<String> {
+        let pending: Vec<String> = self
+            .policies
+            .iter()
+            .filter(|(_, policy)| !policy.allow_auto)
+            .map(|(tool, policy)| match &policy.note {
+                Some(note) => format!("- {tool}: {note}"),
+                None => format!("- {tool}: Requires approval"),
+            })
+            .collect();
+        if pending.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "The following tools require human approval before execution:\n{}",
+                pending.join("\n")
+            ))
+        }
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for HumanInLoopMiddleware {
+    fn id(&self) -> &'static str {
+        "human-in-loop"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        if let Some(fragment) = self.prompt_fragment() {
+            ctx.request.append_prompt(&fragment);
+        }
+        ctx.request.messages.push(AgentMessage {
+            role: MessageRole::System,
+            content: MessageContent::Text(
+                "Tools marked for human approval will emit interrupts requiring external resolution."
+                    .into(),
+            ),
+            metadata: None,
+        });
+        Ok(())
+    }
+}
+
 pub struct BaseSystemPromptMiddleware;
 
 #[async_trait]
@@ -229,6 +337,73 @@ impl AgentMiddleware for BaseSystemPromptMiddleware {
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
         ctx.request.append_prompt(BASE_AGENT_PROMPT);
+        Ok(())
+    }
+}
+
+/// Anthropic-specific prompt caching middleware. Marks system prompts for caching
+/// to reduce latency on subsequent requests with the same base prompt.
+pub struct AnthropicPromptCachingMiddleware {
+    pub ttl: String,
+    pub unsupported_model_behavior: String,
+}
+
+impl AnthropicPromptCachingMiddleware {
+    pub fn new(ttl: impl Into<String>, unsupported_model_behavior: impl Into<String>) -> Self {
+        Self {
+            ttl: ttl.into(),
+            unsupported_model_behavior: unsupported_model_behavior.into(),
+        }
+    }
+
+    pub fn default() -> Self {
+        Self::new("5m", "ignore")
+    }
+
+    /// Parse TTL string like "5m" to detect if caching is requested.
+    /// For now, any non-empty TTL enables ephemeral caching.
+    fn should_enable_caching(&self) -> bool {
+        !self.ttl.is_empty() && self.ttl != "0" && self.ttl != "0s"
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for AnthropicPromptCachingMiddleware {
+    fn id(&self) -> &'static str {
+        "anthropic-prompt-caching"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        if !self.should_enable_caching() {
+            return Ok(());
+        }
+
+        // Mark system prompt for caching by converting it to a system message with cache control
+        if !ctx.request.system_prompt.is_empty() {
+            let system_message = AgentMessage {
+                role: MessageRole::System,
+                content: MessageContent::Text(ctx.request.system_prompt.clone()),
+                metadata: Some(MessageMetadata {
+                    tool_call_id: None,
+                    cache_control: Some(CacheControl {
+                        cache_type: "ephemeral".to_string(),
+                    }),
+                }),
+            };
+
+            // Insert system message at the beginning of the messages
+            ctx.request.messages.insert(0, system_message);
+
+            // Clear the system_prompt since it's now in messages
+            ctx.request.system_prompt.clear();
+
+            tracing::debug!(
+                ttl = %self.ttl,
+                behavior = %self.unsupported_model_behavior,
+                "Applied Anthropic prompt caching to system message"
+            );
+        }
+
         Ok(())
     }
 }
@@ -277,6 +452,7 @@ impl ToolHandle for TaskRouterTool {
                 content: response.content,
                 metadata: invocation.tool_call_id.map(|id| MessageMetadata {
                     tool_call_id: Some(id),
+                    cache_control: None,
                 }),
             }));
         }
@@ -290,6 +466,7 @@ impl ToolHandle for TaskRouterTool {
             )),
             metadata: invocation.tool_call_id.map(|id| MessageMetadata {
                 tool_call_id: Some(id),
+                cache_control: None,
             }),
         }))
     }
@@ -359,7 +536,7 @@ mod tests {
             Arc::new(RwLock::new(AgentStateSnapshot::default())),
         );
         middleware.modify_model_request(&mut ctx).await.unwrap();
-        assert!(ctx.request.system_prompt.contains("todo list"));
+        assert!(ctx.request.system_prompt.contains("write_todos"));
     }
 
     #[tokio::test]
@@ -373,6 +550,39 @@ mod tests {
             .collect();
         for expected in ["ls", "read_file", "write_file", "edit_file"] {
             assert!(tool_names.contains(&expected.to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn summarization_middleware_trims_messages() {
+        let middleware = SummarizationMiddleware::new(2, "Summary note");
+        let mut request = ModelRequest::new(
+            "System",
+            vec![
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("one".into()),
+                    metadata: None,
+                },
+                AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Text("two".into()),
+                    metadata: None,
+                },
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("three".into()),
+                    metadata: None,
+                },
+            ],
+        );
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+        assert_eq!(ctx.request.messages.len(), 3);
+        match &ctx.request.messages[0].content {
+            MessageContent::Text(text) => assert!(text.contains("Summary note")),
+            other => panic!("expected text, got {other:?}"),
         }
     }
 
@@ -484,5 +694,103 @@ mod tests {
             }
             _ => panic!("expected message"),
         }
+    }
+
+    #[tokio::test]
+    async fn human_in_loop_appends_prompt() {
+        let middleware = HumanInLoopMiddleware::new(HashMap::from([(
+            "danger-tool".into(),
+            HitlPolicy {
+                allow_auto: false,
+                note: Some("Requires security review".into()),
+            },
+        )]));
+        let mut request = ModelRequest::new("System", vec![]);
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+        assert!(ctx
+            .request
+            .system_prompt
+            .contains("danger-tool: Requires security review"));
+    }
+
+    #[tokio::test]
+    async fn anthropic_prompt_caching_moves_system_prompt_to_messages() {
+        let middleware = AnthropicPromptCachingMiddleware::new("5m", "ignore");
+        let mut request = ModelRequest::new(
+            "This is the system prompt",
+            vec![AgentMessage {
+                role: MessageRole::User,
+                content: MessageContent::Text("Hello".into()),
+                metadata: None,
+            }],
+        );
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+
+        // Apply the middleware
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+
+        // System prompt should be cleared
+        assert!(ctx.request.system_prompt.is_empty());
+
+        // Should have added a system message with cache control at the beginning
+        assert_eq!(ctx.request.messages.len(), 2);
+
+        let system_message = &ctx.request.messages[0];
+        assert!(matches!(system_message.role, MessageRole::System));
+        assert_eq!(
+            system_message.content.as_text().unwrap(),
+            "This is the system prompt"
+        );
+
+        // Check cache control metadata
+        let metadata = system_message.metadata.as_ref().unwrap();
+        let cache_control = metadata.cache_control.as_ref().unwrap();
+        assert_eq!(cache_control.cache_type, "ephemeral");
+
+        // Original user message should still be there
+        let user_message = &ctx.request.messages[1];
+        assert!(matches!(user_message.role, MessageRole::User));
+        assert_eq!(user_message.content.as_text().unwrap(), "Hello");
+    }
+
+    #[tokio::test]
+    async fn anthropic_prompt_caching_disabled_with_zero_ttl() {
+        let middleware = AnthropicPromptCachingMiddleware::new("0", "ignore");
+        let mut request = ModelRequest::new("This is the system prompt", vec![]);
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+
+        // Apply the middleware
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+
+        // System prompt should be unchanged
+        assert_eq!(ctx.request.system_prompt, "This is the system prompt");
+        assert_eq!(ctx.request.messages.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn anthropic_prompt_caching_no_op_with_empty_system_prompt() {
+        let middleware = AnthropicPromptCachingMiddleware::new("5m", "ignore");
+        let mut request = ModelRequest::new(
+            "",
+            vec![AgentMessage {
+                role: MessageRole::User,
+                content: MessageContent::Text("Hello".into()),
+                metadata: None,
+            }],
+        );
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let mut ctx = MiddlewareContext::with_request(&mut request, state);
+
+        // Apply the middleware
+        middleware.modify_model_request(&mut ctx).await.unwrap();
+
+        // Should be unchanged
+        assert!(ctx.request.system_prompt.is_empty());
+        assert_eq!(ctx.request.messages.len(), 1);
+        assert!(matches!(ctx.request.messages[0].role, MessageRole::User));
     }
 }

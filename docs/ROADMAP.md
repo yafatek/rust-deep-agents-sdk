@@ -1,5 +1,10 @@
 # Delivery Roadmap
 
+> Scope update: Near-term focus is documentation and a CLI-based
+> reference harness for trying the system locally. WhatsApp integration,
+> additional provider adapters (Bedrock/Ollama/HuggingFace), and
+> persistence/Terraform modules are deferred to backlog.
+
 ## Phase 0 – Foundations (Week 1)
 - Finalize customer requirements, SLA targets, and AWS constraints.
 - Scaffold Cargo workspace (`crates/agents-core`, `crates/agents-runtime`, `crates/agents-toolkit`, `crates/agents-aws`, `examples/`).
@@ -17,8 +22,13 @@
 
 ## Phase 3 – Extensibility & Examples (Weeks 6-7)
 - Introduce configuration DSL or builder API for rapid agent assembly.
-- Ship reference examples (e.g., research analyst, support agent) under `examples/`, including WhatsApp webhook harness.
+- Ship reference examples (e.g., research analyst, support agent) under `examples/`, including a CLI harness for local experimentation.
 - Document contribution patterns, code reuse guides, and customer onboarding playbooks.
+
+## Backlog – Deferred Items
+- Extend provider layer with adapters for Bedrock, Ollama, and HuggingFace, sharing configuration helpers across backends.
+- Implement persistence adapters (DynamoDB/S3) with corresponding Terraform modules under `deploy/`.
+- Add WhatsApp webhook integration as an optional example once CLI workflow is validated.
 
 ## Phase 4 – Hardening & Release (Weeks 8-9)
 - Conduct security review, enforce rate limiting, and finalize audit logging strategy.
