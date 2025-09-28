@@ -46,4 +46,14 @@ pub struct ToolInvocation {
 pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+}
+
+/// Cache control metadata for Anthropic prompt caching
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheControl {
+    /// Cache type - currently only "ephemeral" is supported by Anthropic
+    #[serde(rename = "type")]
+    pub cache_type: String,
 }

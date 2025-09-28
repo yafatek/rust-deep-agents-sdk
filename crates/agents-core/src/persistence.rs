@@ -147,7 +147,10 @@ mod tests {
     #[tokio::test]
     async fn in_memory_checkpointer_nonexistent_thread() {
         let checkpointer = InMemoryCheckpointer::new();
-        let result = checkpointer.load_state(&"nonexistent".to_string()).await.unwrap();
+        let result = checkpointer
+            .load_state(&"nonexistent".to_string())
+            .await
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -172,8 +175,14 @@ mod tests {
         let state = sample_state();
 
         // Save multiple threads
-        checkpointer.save_state(&"thread1".to_string(), &state).await.unwrap();
-        checkpointer.save_state(&"thread2".to_string(), &state).await.unwrap();
+        checkpointer
+            .save_state(&"thread1".to_string(), &state)
+            .await
+            .unwrap();
+        checkpointer
+            .save_state(&"thread2".to_string(), &state)
+            .await
+            .unwrap();
 
         let threads = checkpointer.list_threads().await.unwrap();
         assert_eq!(threads.len(), 2);

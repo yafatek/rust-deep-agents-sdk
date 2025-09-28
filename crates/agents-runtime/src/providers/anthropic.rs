@@ -48,6 +48,14 @@ struct AnthropicContentBlock {
     #[serde(rename = "type")]
     kind: &'static str,
     text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<AnthropicCacheControl>,
+}
+
+#[derive(Serialize)]
+struct AnthropicCacheControl {
+    #[serde(rename = "type")]
+    cache_type: String,
 }
 
 #[derive(Deserialize)]
@@ -63,24 +71,51 @@ struct AnthropicResponseBlock {
 }
 
 fn to_anthropic_messages(request: &LlmRequest) -> (String, Vec<AnthropicMessage>) {
+    let mut system_prompt = request.system_prompt.clone();
     let mut messages = Vec::new();
+
     for message in &request.messages {
-        let role = match message.role {
-            MessageRole::User => "user",
-            MessageRole::Agent => "assistant",
-            MessageRole::Tool => "user",
-            MessageRole::System => "user",
-        };
         let text = match &message.content {
             MessageContent::Text(text) => text.clone(),
             MessageContent::Json(value) => value.to_string(),
         };
+
+        // Handle system messages specially - they should be part of the system prompt
+        if matches!(message.role, MessageRole::System) {
+            if !system_prompt.is_empty() {
+                system_prompt.push_str("\n\n");
+            }
+            system_prompt.push_str(&text);
+            continue;
+        }
+
+        let role = match message.role {
+            MessageRole::User => "user",
+            MessageRole::Agent => "assistant",
+            MessageRole::Tool => "user",
+            MessageRole::System => unreachable!(), // Handled above
+        };
+
+        // Convert cache control if present
+        let cache_control = message
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.cache_control.as_ref())
+            .map(|cc| AnthropicCacheControl {
+                cache_type: cc.cache_type.clone(),
+            });
+
         messages.push(AnthropicMessage {
             role: role.to_string(),
-            content: vec![AnthropicContentBlock { kind: "text", text }],
+            content: vec![AnthropicContentBlock {
+                kind: "text",
+                text,
+                cache_control,
+            }],
         });
     }
-    (request.system_prompt.clone(), messages)
+
+    (system_prompt, messages)
 }
 
 #[async_trait]

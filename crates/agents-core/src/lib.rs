@@ -7,9 +7,14 @@ pub mod command;
 pub mod hitl;
 pub mod llm;
 pub mod messaging;
+pub mod persistence;
 pub mod prompts;
 pub mod state;
 
 pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle, ToolHandle, ToolResponse};
 pub use command::{Command, StateDiff};
 pub use hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
+pub use messaging::{
+    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+};
+pub use persistence::{Checkpointer, CheckpointerConfig, InMemoryCheckpointer, ThreadId};

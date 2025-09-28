@@ -10,14 +10,15 @@ use agents_core::llm::LanguageModel;
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
+use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::middleware::{
-    BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy, HumanInLoopMiddleware,
-    MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware,
-    SubAgentRegistration, SummarizationMiddleware,
+    AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy,
+    HumanInLoopMiddleware, MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor,
+    SubAgentMiddleware, SubAgentRegistration, SummarizationMiddleware,
 };
 use crate::planner::LlmBackedPlanner;
 use crate::providers::{
@@ -27,6 +28,21 @@ use crate::providers::{
 
 // Built-in tool names exposed by middlewares. The `task` tool for subagents is not gated.
 const BUILTIN_TOOL_NAMES: &[&str] = &["write_todos", "ls", "read_file", "write_file", "edit_file"];
+
+/// Returns the default language model configured
+/// Uses Claude Sonnet 4 with 64000 max tokens, mirroring the Python SDK defaults.
+pub fn get_default_model() -> anyhow::Result<Arc<dyn LanguageModel>> {
+    let config = AnthropicConfig {
+        api_key: std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY environment variable is required"))?,
+        model: "claude-sonnet-4-20250514".to_string(),
+        max_output_tokens: 64000,
+        api_url: None,
+        api_version: None,
+    };
+    let model: Arc<dyn LanguageModel> = Arc::new(AnthropicMessagesModel::new(config)?);
+    Ok(model)
+}
 
 /// Configuration for building a deep agent instance.
 pub struct DeepAgentConfig {
@@ -38,6 +54,8 @@ pub struct DeepAgentConfig {
     pub tool_interrupts: HashMap<String, HitlPolicy>,
     pub builtin_tools: Option<HashSet<String>>,
     pub auto_general_purpose: bool,
+    pub enable_prompt_caching: bool,
+    pub checkpointer: Option<Arc<dyn Checkpointer>>,
 }
 
 /// Configuration for creating and registering a subagent using a simple, Python-like shape.
@@ -60,6 +78,8 @@ pub struct ConfigurableAgentBuilder {
     tool_interrupts: HashMap<String, HitlPolicy>,
     builtin_tools: Option<HashSet<String>>,
     auto_general_purpose: bool,
+    enable_prompt_caching: bool,
+    checkpointer: Option<Arc<dyn Checkpointer>>,
 }
 
 impl ConfigurableAgentBuilder {
@@ -73,30 +93,40 @@ impl ConfigurableAgentBuilder {
             tool_interrupts: HashMap::new(),
             builtin_tools: None,
             auto_general_purpose: true,
+            enable_prompt_caching: false,
+            checkpointer: None,
         }
     }
 
+    /// Set the language model for the agent (mirrors Python's `model` parameter)
+    pub fn with_model(mut self, model: Arc<dyn LanguageModel>) -> Self {
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        self.planner = Some(planner);
+        self
+    }
+
+    /// Low-level planner API (for advanced use cases)
     pub fn with_planner(mut self, planner: Arc<dyn PlannerHandle>) -> Self {
         self.planner = Some(planner);
         self
     }
 
+    /// Convenience method for OpenAI models (equivalent to model=OpenAiChatModel)
     pub fn with_openai_chat(self, config: OpenAiConfig) -> anyhow::Result<Self> {
-        let model: Arc<dyn LanguageModel> = Arc::new(OpenAiChatModel::new(config)?);
-        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
-        Ok(self.with_planner(planner))
+        let model = Arc::new(OpenAiChatModel::new(config)?);
+        Ok(self.with_model(model))
     }
 
+    /// Convenience method for Anthropic models (equivalent to model=AnthropicMessagesModel)  
     pub fn with_anthropic_messages(self, config: AnthropicConfig) -> anyhow::Result<Self> {
-        let model: Arc<dyn LanguageModel> = Arc::new(AnthropicMessagesModel::new(config)?);
-        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
-        Ok(self.with_planner(planner))
+        let model = Arc::new(AnthropicMessagesModel::new(config)?);
+        Ok(self.with_model(model))
     }
 
+    /// Convenience method for Gemini models (equivalent to model=GeminiChatModel)
     pub fn with_gemini_chat(self, config: GeminiConfig) -> anyhow::Result<Self> {
-        let model: Arc<dyn LanguageModel> = Arc::new(GeminiChatModel::new(config)?);
-        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
-        Ok(self.with_planner(planner))
+        let model = Arc::new(GeminiChatModel::new(config)?);
+        Ok(self.with_model(model))
     }
 
     pub fn with_tool(mut self, tool: Arc<dyn ToolHandle>) -> Self {
@@ -141,6 +171,16 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    pub fn with_prompt_caching(mut self, enabled: bool) -> Self {
+        self.enable_prompt_caching = enabled;
+        self
+    }
+
+    pub fn with_checkpointer(mut self, checkpointer: Arc<dyn Checkpointer>) -> Self {
+        self.checkpointer = Some(checkpointer);
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<DeepAgent> {
         self.finalize(create_deep_agent)
     }
@@ -161,15 +201,20 @@ impl ConfigurableAgentBuilder {
             tool_interrupts,
             builtin_tools,
             auto_general_purpose,
+            enable_prompt_caching,
+            checkpointer,
         } = self;
 
-        let planner = planner.ok_or_else(|| {
-            anyhow::anyhow!("planner must be set (use with_planner or with_*_chat)")
-        })?;
+        let planner = planner
+            .ok_or_else(|| anyhow::anyhow!("model must be set (use with_model or with_*_chat)"))?;
 
         let mut cfg = DeepAgentConfig::new(instructions, planner)
-            .with_auto_general_purpose(auto_general_purpose);
+            .with_auto_general_purpose(auto_general_purpose)
+            .with_prompt_caching(enable_prompt_caching);
 
+        if let Some(ckpt) = checkpointer {
+            cfg = cfg.with_checkpointer(ckpt);
+        }
         if let Some(sum) = summarization {
             cfg = cfg.with_summarization(sum);
         }
@@ -207,6 +252,8 @@ impl DeepAgentConfig {
             tool_interrupts: HashMap::new(),
             builtin_tools: None,
             auto_general_purpose: true,
+            enable_prompt_caching: false,
+            checkpointer: None,
         }
     }
 
@@ -248,26 +295,40 @@ impl DeepAgentConfig {
         self
     }
 
-    /// Enable/disable automatic registration of a "general-purpose" subagent.
+    /// Enable or disable automatic registration of a "general-purpose" subagent.
     /// Enabled by default; set to false to opt out.
     pub fn with_auto_general_purpose(mut self, enabled: bool) -> Self {
         self.auto_general_purpose = enabled;
         self
     }
 
-    /// Convenience: construct and register a subagent from a simple config.
+    /// Enable or disable Anthropic prompt caching middleware.
+    /// Disabled by default; set to true to enable caching for better performance.
+    pub fn with_prompt_caching(mut self, enabled: bool) -> Self {
+        self.enable_prompt_caching = enabled;
+        self
+    }
+
+    /// Set the checkpointer for persisting agent state between runs.
+    pub fn with_checkpointer(mut self, checkpointer: Arc<dyn Checkpointer>) -> Self {
+        self.checkpointer = Some(checkpointer);
+        self
+    }
+
+    /// Convenience: construct and register a subagent from a simple configuration bundle.
     pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
         let planner = cfg.planner.unwrap_or_else(|| self.planner.clone());
-        let mut sub_cfg =
-            DeepAgentConfig::new(cfg.instructions, planner).with_auto_general_purpose(false);
+        let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
+            .with_auto_general_purpose(false)
+            .with_prompt_caching(self.enable_prompt_caching);
         if let Some(ref selected) = self.builtin_tools {
             sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
         }
         if let Some(ref sum) = self.summarization {
             sub_cfg = sub_cfg.with_summarization(sum.clone());
         }
-        // Inherit tool interrupts not by default; subagents typically don't need host HITL policies.
-        // Attach provided tools or inherit base tools
+        // Tool interrupts are not inherited by default; subagents typically do not need host HITL policies.
+        // Attach provided tools or inherit the base tools.
         if let Some(tools) = cfg.tools {
             for t in tools {
                 sub_cfg = sub_cfg.with_tool(t);
@@ -333,7 +394,8 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
             // Create a subagent with inherited planner/tools and same instructions
             let mut sub_cfg =
                 DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
-                    .with_auto_general_purpose(false);
+                    .with_auto_general_purpose(false)
+                    .with_prompt_caching(config.enable_prompt_caching);
             if let Some(ref selected) = config.builtin_tools {
                 sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }
@@ -376,6 +438,9 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
     if let Some(ref summary) = summarization {
         middlewares.push(summary.clone());
     }
+    if config.enable_prompt_caching {
+        middlewares.push(Arc::new(AnthropicPromptCachingMiddleware::default()));
+    }
     if let Some(ref hitl_mw) = hitl {
         middlewares.push(hitl_mw.clone());
     }
@@ -396,6 +461,7 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
         hitl,
         pending_hitl: Arc::new(RwLock::new(None)),
         builtin_tools: config.builtin_tools,
+        checkpointer: config.checkpointer,
     }
 }
 
@@ -418,6 +484,7 @@ pub struct DeepAgent {
     hitl: Option<Arc<HumanInLoopMiddleware>>,
     pending_hitl: Arc<RwLock<Option<HitlPending>>>,
     builtin_tools: Option<HashSet<String>>,
+    checkpointer: Option<Arc<dyn Checkpointer>>,
 }
 
 struct HitlPending {
@@ -464,6 +531,60 @@ impl DeepAgent {
         self.history.read().map(|h| h.clone()).unwrap_or_default()
     }
 
+    /// Save the current agent state to the configured checkpointer.
+    pub async fn save_state(&self, thread_id: &ThreadId) -> anyhow::Result<()> {
+        if let Some(ref checkpointer) = self.checkpointer {
+            let state = self
+                .state
+                .read()
+                .map_err(|_| anyhow::anyhow!("Failed to read agent state"))?
+                .clone();
+            checkpointer.save_state(thread_id, &state).await
+        } else {
+            tracing::warn!("Attempted to save state but no checkpointer is configured");
+            Ok(())
+        }
+    }
+
+    /// Load agent state from the configured checkpointer.
+    pub async fn load_state(&self, thread_id: &ThreadId) -> anyhow::Result<bool> {
+        if let Some(ref checkpointer) = self.checkpointer {
+            if let Some(saved_state) = checkpointer.load_state(thread_id).await? {
+                *self
+                    .state
+                    .write()
+                    .map_err(|_| anyhow::anyhow!("Failed to write agent state"))? = saved_state;
+                tracing::info!(thread_id = %thread_id, "Loaded agent state from checkpointer");
+                Ok(true)
+            } else {
+                tracing::debug!(thread_id = %thread_id, "No saved state found for thread");
+                Ok(false)
+            }
+        } else {
+            tracing::warn!("Attempted to load state but no checkpointer is configured");
+            Ok(false)
+        }
+    }
+
+    /// Delete saved state for the specified thread.
+    pub async fn delete_thread(&self, thread_id: &ThreadId) -> anyhow::Result<()> {
+        if let Some(ref checkpointer) = self.checkpointer {
+            checkpointer.delete_thread(thread_id).await
+        } else {
+            tracing::warn!("Attempted to delete thread state but no checkpointer is configured");
+            Ok(())
+        }
+    }
+
+    /// List all threads with saved state.
+    pub async fn list_threads(&self) -> anyhow::Result<Vec<ThreadId>> {
+        if let Some(ref checkpointer) = self.checkpointer {
+            checkpointer.list_threads().await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     async fn execute_tool(
         &self,
         tool: Arc<dyn ToolHandle>,
@@ -499,7 +620,10 @@ impl DeepAgent {
                 final_message.unwrap_or_else(|| AgentMessage {
                     role: MessageRole::Tool,
                     content: MessageContent::Text("Command executed.".into()),
-                    metadata: Some(MessageMetadata { tool_call_id: None }),
+                    metadata: Some(MessageMetadata {
+                        tool_call_id: None,
+                        cache_control: None,
+                    }),
                 })
             }
         }
@@ -642,14 +766,20 @@ impl AgentHandle for DeepAgent {
                             "Tool '{tool}' not available",
                             tool = tool_name
                         )),
-                        metadata: Some(MessageMetadata { tool_call_id: None }),
+                        metadata: Some(MessageMetadata {
+                            tool_call_id: None,
+                            cache_control: None,
+                        }),
                     })
                 }
             }
             PlannerAction::Terminate => Ok(AgentMessage {
                 role: MessageRole::Agent,
                 content: MessageContent::Text("Terminating conversation.".into()),
-                metadata: Some(MessageMetadata { tool_call_id: None }),
+                metadata: Some(MessageMetadata {
+                    tool_call_id: None,
+                    cache_control: None,
+                }),
             }),
         }
     }
@@ -1065,6 +1195,142 @@ mod tests {
         match edited.content {
             MessageContent::Text(text) => assert_eq!(text, "edited-ok"),
             other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_builder_supports_prompt_caching() {
+        let planner = Arc::new(EchoPlanner);
+        let agent = ConfigurableAgentBuilder::new("test prompt caching")
+            .with_planner(planner)
+            .with_prompt_caching(true)
+            .build()
+            .unwrap();
+
+        let response = send_user(&agent, "hello").await;
+        // Echo planner just returns the input, so this verifies the agent works with caching enabled
+        assert_eq!(response.content.as_text().unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn agent_builder_supports_checkpointer() {
+        use agents_core::persistence::InMemoryCheckpointer;
+
+        let planner = Arc::new(EchoPlanner);
+        let checkpointer = Arc::new(InMemoryCheckpointer::new());
+        let agent = ConfigurableAgentBuilder::new("test checkpointer")
+            .with_planner(planner)
+            .with_checkpointer(checkpointer)
+            .build()
+            .unwrap();
+
+        // Test that we can save and load state
+        let thread_id = "test-thread".to_string();
+        agent.save_state(&thread_id).await.unwrap();
+
+        // Load should return true (state was found and loaded)
+        let loaded = agent.load_state(&thread_id).await.unwrap();
+        assert!(loaded);
+
+        // Test listing threads
+        let threads = agent.list_threads().await.unwrap();
+        assert!(threads.contains(&thread_id));
+
+        // Clean up
+        agent.delete_thread(&thread_id).await.unwrap();
+        let threads_after = agent.list_threads().await.unwrap();
+        assert!(!threads_after.contains(&thread_id));
+    }
+
+    #[tokio::test]
+    async fn agent_builder_with_model_mirrors_python_api() {
+        use agents_core::llm::{LlmRequest, LlmResponse};
+        use async_trait::async_trait;
+
+        // Mock model that mirrors Python API usage
+        struct MockLanguageModel;
+
+        #[async_trait]
+        impl LanguageModel for MockLanguageModel {
+            async fn generate(&self, _request: LlmRequest) -> anyhow::Result<LlmResponse> {
+                Ok(LlmResponse {
+                    message: AgentMessage {
+                        role: MessageRole::Agent,
+                        content: MessageContent::Text("model response".into()),
+                        metadata: None,
+                    },
+                })
+            }
+        }
+
+        // This mirrors Python: create_deep_agent(model=some_model, ...)
+        let model = Arc::new(MockLanguageModel);
+        let agent = ConfigurableAgentBuilder::new("test model")
+            .with_model(model) // ← This mirrors Python's model= parameter
+            .build()
+            .unwrap();
+
+        let response = send_user(&agent, "hello").await;
+        assert_eq!(response.content.as_text().unwrap(), "model response");
+    }
+
+    #[test]
+    fn test_get_default_model_requires_api_key() {
+        // Save current state
+        let original_key = std::env::var("ANTHROPIC_API_KEY").ok();
+
+        // Remove the key to test error case
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        let result = get_default_model();
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.err().unwrap());
+        assert!(err_msg.contains("ANTHROPIC_API_KEY"));
+
+        // Restore original state
+        if let Some(key) = original_key {
+            std::env::set_var("ANTHROPIC_API_KEY", key);
+        }
+    }
+
+    #[test]
+    fn test_get_default_model_with_api_key() {
+        // Save current state
+        let original_key = std::env::var("ANTHROPIC_API_KEY").ok();
+
+        // Set test key
+        std::env::set_var("ANTHROPIC_API_KEY", "test-key");
+        let result = get_default_model();
+        assert!(result.is_ok());
+
+        // Restore original state
+        match original_key {
+            Some(key) => std::env::set_var("ANTHROPIC_API_KEY", key),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_configurable_agent_with_default_model() {
+        // Save current state
+        let original_key = std::env::var("ANTHROPIC_API_KEY").ok();
+
+        // Test using get_default_model with the builder pattern
+        std::env::set_var("ANTHROPIC_API_KEY", "test-key");
+
+        let model = get_default_model().unwrap();
+        let agent = ConfigurableAgentBuilder::new("test instructions")
+            .with_model(model) // Use the default model
+            .build()
+            .unwrap();
+
+        // Agent should be created successfully
+        let descriptor = agent.describe().await;
+        assert_eq!(descriptor.name, "deep-agent");
+
+        // Restore original state
+        match original_key {
+            Some(key) => std::env::set_var("ANTHROPIC_API_KEY", key),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
         }
     }
 }

@@ -14,6 +14,9 @@ pub mod middleware;
 pub mod planner;
 pub mod providers;
 
+// Re-export key functions for convenience
+pub use graph::get_default_model;
+
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>
 where

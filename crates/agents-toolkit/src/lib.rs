@@ -16,6 +16,7 @@ use agents_core::messaging::{
 pub(crate) fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
     invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
         tool_call_id: Some(id.clone()),
+        cache_control: None,
     })
 }
 

@@ -136,6 +136,7 @@ impl ToolHandle for TavilySearchTool {
             content: MessageContent::Text(lines.join("\n")),
             metadata: Some(MessageMetadata {
                 tool_call_id: invocation.tool_call_id.clone(),
+                cache_control: None,
             }),
         };
         Ok(ToolResponse::Message(message))

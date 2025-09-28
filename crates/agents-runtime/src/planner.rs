@@ -206,6 +206,7 @@ mod tests {
                     })),
                     metadata: Some(MessageMetadata {
                         tool_call_id: Some("call-1".into()),
+                        cache_control: None,
                     }),
                 },
             })
