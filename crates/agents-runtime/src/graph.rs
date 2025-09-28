@@ -142,20 +142,51 @@ impl ConfigurableAgentBuilder {
     }
 
     pub fn build(self) -> anyhow::Result<DeepAgent> {
-        let planner = self
-            .planner
-            .ok_or_else(|| anyhow::anyhow!("planner must be set (use with_planner or with_*_chat)"))?;
+        self.finalize(create_deep_agent)
+    }
 
-        let mut cfg = DeepAgentConfig::new(self.instructions, planner)
-            .with_auto_general_purpose(self.auto_general_purpose);
+    /// Build an agent using the async constructor alias. This mirrors the Python
+    /// async_create_deep_agent entry point, while reusing the same runtime internals.
+    pub fn build_async(self) -> anyhow::Result<DeepAgent> {
+        self.finalize(create_async_deep_agent)
+    }
 
-        if let Some(sum) = self.summarization { cfg = cfg.with_summarization(sum); }
-        if let Some(selected) = self.builtin_tools { cfg = cfg.with_builtin_tools(selected); }
-        for (k, v) in self.tool_interrupts { cfg = cfg.with_tool_interrupt(k, v); }
-        for t in self.tools { cfg = cfg.with_tool(t); }
-        for s in self.subagents { cfg = cfg.with_subagent_config(s); }
+    fn finalize(self, ctor: fn(DeepAgentConfig) -> DeepAgent) -> anyhow::Result<DeepAgent> {
+        let Self {
+            instructions,
+            planner,
+            tools,
+            subagents,
+            summarization,
+            tool_interrupts,
+            builtin_tools,
+            auto_general_purpose,
+        } = self;
 
-        Ok(create_deep_agent(cfg))
+        let planner = planner.ok_or_else(|| {
+            anyhow::anyhow!("planner must be set (use with_planner or with_*_chat)")
+        })?;
+
+        let mut cfg = DeepAgentConfig::new(instructions, planner)
+            .with_auto_general_purpose(auto_general_purpose);
+
+        if let Some(sum) = summarization {
+            cfg = cfg.with_summarization(sum);
+        }
+        if let Some(selected) = builtin_tools {
+            cfg = cfg.with_builtin_tools(selected);
+        }
+        for (name, policy) in tool_interrupts {
+            cfg = cfg.with_tool_interrupt(name, policy);
+        }
+        for tool in tools {
+            cfg = cfg.with_tool(tool);
+        }
+        for sub_cfg in subagents {
+            cfg = cfg.with_subagent_config(sub_cfg);
+        }
+
+        Ok(ctor(cfg))
     }
 }
 
@@ -226,11 +257,9 @@ impl DeepAgentConfig {
 
     /// Convenience: construct and register a subagent from a simple config.
     pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
-        let planner = cfg
-            .planner
-            .unwrap_or_else(|| self.planner.clone());
-        let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
-            .with_auto_general_purpose(false);
+        let planner = cfg.planner.unwrap_or_else(|| self.planner.clone());
+        let mut sub_cfg =
+            DeepAgentConfig::new(cfg.instructions, planner).with_auto_general_purpose(false);
         if let Some(ref selected) = self.builtin_tools {
             sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
         }
@@ -240,14 +269,21 @@ impl DeepAgentConfig {
         // Inherit tool interrupts not by default; subagents typically don't need host HITL policies.
         // Attach provided tools or inherit base tools
         if let Some(tools) = cfg.tools {
-            for t in tools { sub_cfg = sub_cfg.with_tool(t); }
+            for t in tools {
+                sub_cfg = sub_cfg.with_tool(t);
+            }
         } else {
-            for t in &self.tools { sub_cfg = sub_cfg.with_tool(t.clone()); }
+            for t in &self.tools {
+                sub_cfg = sub_cfg.with_tool(t.clone());
+            }
         }
 
         let sub_agent = create_deep_agent(sub_cfg);
         self = self.with_subagent(
-            SubAgentDescriptor { name: cfg.name, description: cfg.description },
+            SubAgentDescriptor {
+                name: cfg.name,
+                description: cfg.description,
+            },
             Arc::new(sub_agent),
         );
         self
@@ -295,15 +331,18 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
             .any(|r| r.descriptor.name == "general-purpose");
         if !has_gp {
             // Create a subagent with inherited planner/tools and same instructions
-            let mut sub_cfg = DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
-                .with_auto_general_purpose(false);
+            let mut sub_cfg =
+                DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
+                    .with_auto_general_purpose(false);
             if let Some(ref selected) = config.builtin_tools {
                 sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }
             if let Some(ref sum) = config.summarization {
                 sub_cfg = sub_cfg.with_summarization(sum.clone());
             }
-            for t in &config.tools { sub_cfg = sub_cfg.with_tool(t.clone()); }
+            for t in &config.tools {
+                sub_cfg = sub_cfg.with_tool(t.clone());
+            }
 
             let gp = create_deep_agent(sub_cfg);
             registrations.push(SubAgentRegistration {
@@ -358,6 +397,13 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
         pending_hitl: Arc::new(RwLock::new(None)),
         builtin_tools: config.builtin_tools,
     }
+}
+
+/// Async constructor alias to mirror the Python API surface. The underlying
+/// runtime already executes every tool and planner call asynchronously, so this
+/// currently delegates to `create_deep_agent`.
+pub fn create_async_deep_agent(config: DeepAgentConfig) -> DeepAgent {
+    create_deep_agent(config)
 }
 
 pub struct DeepAgent {
@@ -431,10 +477,15 @@ impl DeepAgent {
                 tool_call_id: None,
             })
             .await?;
+
+        Ok(self.apply_tool_response(response))
+    }
+
+    fn apply_tool_response(&self, response: ToolResponse) -> AgentMessage {
         match response {
             ToolResponse::Message(message) => {
                 self.append_history(message.clone());
-                Ok(message)
+                message
             }
             ToolResponse::Command(command) => {
                 if let Ok(mut state) = self.state.write() {
@@ -445,11 +496,11 @@ impl DeepAgent {
                     self.append_history(message.clone());
                     final_message = Some(message.clone());
                 }
-                Ok(final_message.unwrap_or_else(|| AgentMessage {
+                final_message.unwrap_or_else(|| AgentMessage {
                     role: MessageRole::Tool,
                     content: MessageContent::Text("Command executed.".into()),
                     metadata: Some(MessageMetadata { tool_call_id: None }),
-                }))
+                })
             }
         }
     }
@@ -502,9 +553,7 @@ impl DeepAgent {
                 // Execute the edited tool/action with provided args
                 let tools = self.collect_tools();
                 if let Some(tool) = tools.get(&action).cloned() {
-                    let result = self
-                        .execute_tool(tool, action, args)
-                        .await?;
+                    let result = self.execute_tool(tool, action, args).await?;
                     Ok(result)
                 } else {
                     Ok(AgentMessage {
@@ -584,35 +633,8 @@ impl AgentHandle for DeepAgent {
                             return Ok(approval_message);
                         }
                     }
-                    let response = tool
-                        .invoke(ToolInvocation {
-                            tool_name,
-                            args: payload,
-                            tool_call_id: None,
-                        })
-                        .await?;
-
-                    match response {
-                        ToolResponse::Message(message) => {
-                            self.append_history(message.clone());
-                            Ok(message)
-                        }
-                        ToolResponse::Command(command) => {
-                            if let Ok(mut state) = self.state.write() {
-                                command.clone().apply_to(&mut state);
-                            }
-                            let mut final_message = None;
-                            for message in &command.messages {
-                                self.append_history(message.clone());
-                                final_message = Some(message.clone());
-                            }
-                            Ok(final_message.unwrap_or_else(|| AgentMessage {
-                                role: MessageRole::Tool,
-                                content: MessageContent::Text("Command executed.".into()),
-                                metadata: Some(MessageMetadata { tool_call_id: None }),
-                            }))
-                        }
-                    }
+                    self.execute_tool(tool.clone(), tool_name.clone(), payload.clone())
+                        .await
                 } else {
                     Ok(AgentMessage {
                         role: MessageRole::Tool,
@@ -639,6 +661,20 @@ mod tests {
     use agents_core::agent::{PlannerDecision, PlannerHandle, ToolHandle, ToolResponse};
     use async_trait::async_trait;
     use serde_json::json;
+
+    async fn send_user(agent: &DeepAgent, text: &str) -> AgentMessage {
+        agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text(text.into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap()
+    }
 
     struct EchoPlanner;
 
@@ -678,17 +714,7 @@ mod tests {
         let planner = Arc::new(EchoPlanner);
         let agent = create_deep_agent(DeepAgentConfig::new("Be helpful", planner));
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("hello".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "hello").await;
 
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "hello"),
@@ -722,17 +748,7 @@ mod tests {
             DeepAgentConfig::new("Assist", planner).with_builtin_tools(["write_todos"]),
         );
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("list files".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "list files").await;
 
         if let MessageContent::Text(text) = response.content {
             assert!(text.contains("Tool 'ls' not available"));
@@ -799,17 +815,7 @@ mod tests {
         );
         let agent = create_deep_agent(config);
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("delegate".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "delegate").await;
 
         assert!(matches!(response.role, MessageRole::Tool));
         match response.content {
@@ -870,17 +876,7 @@ mod tests {
         // and ensuring GP inherits it
         let agent = create_deep_agent(DeepAgentConfig::new("Assist", gp_planner));
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("delegate to gp".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "delegate to gp").await;
 
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "gp-ok"),
@@ -902,17 +898,7 @@ mod tests {
             }),
         );
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("delegate".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "delegate").await;
 
         match response.content {
             MessageContent::Text(text) => assert_eq!(text, "custom-ok"),
@@ -958,29 +944,8 @@ mod tests {
             },
         ));
 
-        agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("first".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
-
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("second".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        send_user(&agent, "first").await;
+        let response = send_user(&agent, "second").await;
 
         if let MessageContent::Text(text) = response.content {
             assert_eq!(text, "second");
@@ -1036,17 +1001,7 @@ mod tests {
             );
         let agent = create_deep_agent(config);
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("call tool".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "call tool").await;
 
         match response.content {
             MessageContent::Text(text) => assert!(text.contains("HITL_REQUIRED")),
@@ -1062,7 +1017,9 @@ mod tests {
 
     #[async_trait]
     impl ToolHandle for NoopTool {
-        fn name(&self) -> &str { "noop" }
+        fn name(&self) -> &str {
+            "noop"
+        }
         async fn invoke(&self, _invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
             Ok(ToolResponse::Message(AgentMessage {
                 role: MessageRole::Tool,
@@ -1081,29 +1038,28 @@ mod tests {
             .with_tool(Arc::new(NoopTool))
             .with_tool_interrupt(
                 "sensitive",
-                HitlPolicy { allow_auto: false, note: Some("Needs approval".into()) },
+                HitlPolicy {
+                    allow_auto: false,
+                    note: Some("Needs approval".into()),
+                },
             );
         let agent = create_deep_agent(config);
 
-        let response = agent
-            .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text("call tool".into()),
-                    metadata: None,
-                },
-                Arc::new(AgentStateSnapshot::default()),
-            )
-            .await
-            .unwrap();
+        let response = send_user(&agent, "call tool").await;
         match response.content {
             MessageContent::Text(text) => assert!(text.contains("HITL_REQUIRED")),
             other => panic!("expected text, got {other:?}"),
         }
-        assert!(matches!(agent.current_interrupt(), Some(AgentInterrupt::HumanInLoop(_))));
+        assert!(matches!(
+            agent.current_interrupt(),
+            Some(AgentInterrupt::HumanInLoop(_))
+        ));
 
         let edited = agent
-            .resume_hitl(HitlAction::Edit { action: "noop".into(), args: json!({}) })
+            .resume_hitl(HitlAction::Edit {
+                action: "noop".into(),
+                args: json!({}),
+            })
             .await
             .unwrap();
         match edited.content {

@@ -2,7 +2,8 @@
 /target
 **/target/
 .env
-
+docs/reference
+*.mdc
 # Rust tooling
 **/*.rs.bk
 /.cargo/

@@ -2,10 +2,15 @@ use std::env;
 use std::io::{self, Write};
 use std::sync::Arc;
 
-use agents_core::agent::{AgentHandle, PlannerAction, PlannerContext, PlannerDecision, PlannerHandle, ToolHandle, ToolResponse};
+use agents_core::agent::{
+    AgentHandle, PlannerAction, PlannerContext, PlannerDecision, PlannerHandle, ToolHandle,
+    ToolResponse,
+};
 use agents_core::hitl::HitlAction;
 use agents_core::llm::{LanguageModel, LlmRequest};
-use agents_core::messaging::{AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation};
+use agents_core::messaging::{
+    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+};
 use agents_core::state::AgentStateSnapshot;
 use agents_runtime::graph::{create_deep_agent, DeepAgentConfig, SummarizationConfig};
 use agents_runtime::middleware::SubAgentDescriptor;
@@ -86,7 +91,9 @@ struct TavilyResult {
 
 #[async_trait]
 impl ToolHandle for TavilySearchTool {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
         let args: TavilyArgs = serde_json::from_value(invocation.args.clone())?;
@@ -102,11 +109,19 @@ impl ToolHandle for TavilySearchTool {
             search_depth: args.search_depth.as_deref(),
         };
         tracing::info!(tool = %self.name, query = %args.query, "calling Tavily");
-        let resp = self.client.post(url).json(&body).send().await?.error_for_status()?;
+        let resp = self
+            .client
+            .post(url)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
         let data: TavilyResponse = resp.json().await?;
 
         let mut lines: Vec<String> = Vec::new();
-        if let Some(ans) = &data.answer { lines.push(format!("Answer: {}", ans)); }
+        if let Some(ans) = &data.answer {
+            lines.push(format!("Answer: {}", ans));
+        }
         if !data.results.is_empty() {
             lines.push("Top results:".into());
             for r in data.results.iter().take(5) {
@@ -119,7 +134,9 @@ impl ToolHandle for TavilySearchTool {
         let message = AgentMessage {
             role: MessageRole::Tool,
             content: MessageContent::Text(lines.join("\n")),
-            metadata: Some(MessageMetadata { tool_call_id: invocation.tool_call_id.clone() }),
+            metadata: Some(MessageMetadata {
+                tool_call_id: invocation.tool_call_id.clone(),
+            }),
         };
         Ok(ToolResponse::Message(message))
     }
@@ -131,27 +148,46 @@ struct ExampleLlmPlanner {
 }
 
 impl ExampleLlmPlanner {
-    fn new(model: Arc<dyn LanguageModel>) -> Self { Self { model } }
+    fn new(model: Arc<dyn LanguageModel>) -> Self {
+        Self { model }
+    }
 }
 
 #[derive(Debug, Deserialize)]
-struct ToolCall { name: String, #[serde(default)] args: serde_json::Value }
+struct ToolCall {
+    name: String,
+    #[serde(default)]
+    args: serde_json::Value,
+}
 
 #[derive(Debug, Deserialize)]
-struct PlannerOutput { #[serde(default)] tool_calls: Vec<ToolCall>, #[serde(default)] response: Option<String> }
+struct PlannerOutput {
+    #[serde(default)]
+    tool_calls: Vec<ToolCall>,
+    #[serde(default)]
+    response: Option<String>,
+}
 
 fn try_parse_planner_output_text(text: &str) -> Option<PlannerOutput> {
     // Try raw JSON
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
-        if let Ok(parsed) = serde_json::from_value::<PlannerOutput>(v) { return Some(parsed); }
+        if let Ok(parsed) = serde_json::from_value::<PlannerOutput>(v) {
+            return Some(parsed);
+        }
     }
     // Strip common code fences like ```json ... ``` or ``` ... ```
     let trimmed = text.trim();
     let cleaned = if trimmed.starts_with("```") {
         let without_start = trimmed.trim_start_matches("```");
         // remove optional language tag
-        let without_lang = without_start.trim_start_matches(|c: char| c.is_alphabetic()).trim_start();
-        if let Some(end_idx) = without_lang.rfind("```") { &without_lang[..end_idx] } else { without_lang }
+        let without_lang = without_start
+            .trim_start_matches(|c: char| c.is_alphabetic())
+            .trim_start();
+        if let Some(end_idx) = without_lang.rfind("```") {
+            &without_lang[..end_idx]
+        } else {
+            without_lang
+        }
     } else {
         trimmed
     };
@@ -162,7 +198,11 @@ fn try_parse_planner_output_text(text: &str) -> Option<PlannerOutput> {
 
 #[async_trait]
 impl PlannerHandle for ExampleLlmPlanner {
-    async fn plan(&self, context: PlannerContext, _state: Arc<agents_core::state::AgentStateSnapshot>) -> anyhow::Result<PlannerDecision> {
+    async fn plan(
+        &self,
+        context: PlannerContext,
+        _state: Arc<agents_core::state::AgentStateSnapshot>,
+    ) -> anyhow::Result<PlannerDecision> {
         // Sanitize history for providers that don't accept `tool` role in Chat Completions
         let mut messages: Vec<AgentMessage> = Vec::with_capacity(context.history.len());
         for m in &context.history {
@@ -171,12 +211,19 @@ impl PlannerHandle for ExampleLlmPlanner {
                     MessageContent::Text(t) => format!("[TOOL RESULT] {}", t),
                     MessageContent::Json(v) => format!("[TOOL RESULT JSON] {}", v),
                 };
-                messages.push(AgentMessage { role: MessageRole::User, content: MessageContent::Text(text), metadata: None });
+                messages.push(AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text(text),
+                    metadata: None,
+                });
             } else {
                 messages.push(m.clone());
             }
         }
-        let request = LlmRequest { system_prompt: context.system_prompt.clone(), messages };
+        let request = LlmRequest {
+            system_prompt: context.system_prompt.clone(),
+            messages,
+        };
         let response = self.model.generate(request).await?;
         let message = response.message;
 
@@ -190,9 +237,24 @@ impl PlannerHandle for ExampleLlmPlanner {
                         } else {
                             println!(">> Tool call: {}", tc.name);
                         }
-                        return Ok(PlannerDecision { next_action: PlannerAction::CallTool { tool_name: tc.name.clone(), payload: tc.args.clone() } });
+                        return Ok(PlannerDecision {
+                            next_action: PlannerAction::CallTool {
+                                tool_name: tc.name.clone(),
+                                payload: tc.args.clone(),
+                            },
+                        });
                     }
-                    if let Some(resp) = parsed.response { return Ok(PlannerDecision { next_action: PlannerAction::Respond { message: AgentMessage { role: MessageRole::Agent, content: MessageContent::Text(resp), metadata: message.metadata } } }); }
+                    if let Some(resp) = parsed.response {
+                        return Ok(PlannerDecision {
+                            next_action: PlannerAction::Respond {
+                                message: AgentMessage {
+                                    role: MessageRole::Agent,
+                                    content: MessageContent::Text(resp),
+                                    metadata: message.metadata,
+                                },
+                            },
+                        });
+                    }
                 }
             }
             MessageContent::Text(text) => {
@@ -203,14 +265,37 @@ impl PlannerHandle for ExampleLlmPlanner {
                         } else {
                             println!(">> Tool call: {}", tc.name);
                         }
-                        return Ok(PlannerDecision { next_action: PlannerAction::CallTool { tool_name: tc.name.clone(), payload: tc.args.clone() } });
+                        return Ok(PlannerDecision {
+                            next_action: PlannerAction::CallTool {
+                                tool_name: tc.name.clone(),
+                                payload: tc.args.clone(),
+                            },
+                        });
                     }
-                    if let Some(resp) = parsed.response { return Ok(PlannerDecision { next_action: PlannerAction::Respond { message: AgentMessage { role: MessageRole::Agent, content: MessageContent::Text(resp), metadata: message.metadata } } }); }
+                    if let Some(resp) = parsed.response {
+                        return Ok(PlannerDecision {
+                            next_action: PlannerAction::Respond {
+                                message: AgentMessage {
+                                    role: MessageRole::Agent,
+                                    content: MessageContent::Text(resp),
+                                    metadata: message.metadata,
+                                },
+                            },
+                        });
+                    }
                 }
             }
         }
         // Fallback: return original message content as the final response
-        Ok(PlannerDecision { next_action: PlannerAction::Respond { message: AgentMessage { role: MessageRole::Agent, content: message.content, metadata: message.metadata } } })
+        Ok(PlannerDecision {
+            next_action: PlannerAction::Respond {
+                message: AgentMessage {
+                    role: MessageRole::Agent,
+                    content: message.content,
+                    metadata: message.metadata,
+                },
+            },
+        })
     }
 }
 
@@ -243,25 +328,42 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
     let instructions = env::var("AGENT_INSTRUCTIONS").unwrap_or(default_instructions);
 
     let enable_summary = env::var("AGENT_SUMMARY").unwrap_or_else(|_| "false".into()) == "true";
-    let summary_keep: usize = env::var("AGENT_SUMMARY_KEEP").ok().and_then(|s| s.parse().ok()).unwrap_or(5);
-    let auto_steps: usize = env::var("AGENT_AUTO_STEPS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let summary_keep: usize = env::var("AGENT_SUMMARY_KEEP")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+    let auto_steps: usize = env::var("AGENT_AUTO_STEPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
 
     // Build planner using OpenAI and our example-local planner wrapper
-    let main_model: Arc<dyn LanguageModel> = Arc::new(agents_runtime::providers::openai::OpenAiChatModel::new(
-        OpenAiConfig { api_key: api_key.clone(), model: model.clone(), api_url: api_url.clone() }
-    )?);
+    let main_model: Arc<dyn LanguageModel> = Arc::new(
+        agents_runtime::providers::openai::OpenAiChatModel::new(OpenAiConfig {
+            api_key: api_key.clone(),
+            model: model.clone(),
+            api_url: api_url.clone(),
+        })?,
+    );
     let main_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(main_model));
     let mut cfg = DeepAgentConfig::new(instructions, main_planner);
     if enable_summary {
-        cfg = cfg.with_summarization(SummarizationConfig { messages_to_keep: summary_keep, summary_note: "Earlier messages summarized.".into() });
+        cfg = cfg.with_summarization(SummarizationConfig {
+            messages_to_keep: summary_keep,
+            summary_note: "Earlier messages summarized.".into(),
+        });
     }
 
     // Optional web-researcher subagent using Tavily tool
     if let Ok(tavily_key) = env::var("TAVILY_API_KEY") {
         let tavily_url = env::var("TAVILY_API_URL").ok();
-        let web_model: Arc<dyn LanguageModel> = Arc::new(agents_runtime::providers::openai::OpenAiChatModel::new(
-            OpenAiConfig { api_key: api_key.clone(), model: model.clone(), api_url: api_url.clone() }
-        )?);
+        let web_model: Arc<dyn LanguageModel> = Arc::new(
+            agents_runtime::providers::openai::OpenAiChatModel::new(OpenAiConfig {
+                api_key: api_key.clone(),
+                model: model.clone(),
+                api_url: api_url.clone(),
+            })?,
+        );
         let web_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(web_model));
         let web_cfg = DeepAgentConfig::new(
             format!(
@@ -277,7 +379,10 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
         )?));
         let web_agent = create_deep_agent(web_cfg);
         cfg = cfg.with_subagent(
-            SubAgentDescriptor { name: "web-researcher".into(), description: "Search the web via Tavily and summarize with citations.".into() },
+            SubAgentDescriptor {
+                name: "web-researcher".into(),
+                description: "Search the web via Tavily and summarize with citations.".into(),
+            },
             Arc::new(web_agent),
         );
         tracing::info!("Registered subagent 'web-researcher' with tavily_search tool");
@@ -288,7 +393,12 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
     let agent = create_deep_agent(cfg);
     println!("Deep Agent CLI (model: {})", model);
     println!("Type messages. Commands: /approve, /reject [reason], /respond <msg>, /exit");
-    if auto_steps > 0 { println!("Auto-steps: {} follow-up planning cycles per input", auto_steps); }
+    if auto_steps > 0 {
+        println!(
+            "Auto-steps: {} follow-up planning cycles per input",
+            auto_steps
+        );
+    }
 
     let stdin = io::stdin();
     let mut input = String::new();
@@ -296,40 +406,67 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
         // Resolve pending HITL if any
         if let Some(interrupt) = agent.current_interrupt() {
             let agents_core::hitl::AgentInterrupt::HumanInLoop(h) = interrupt;
-                println!("HITL pending for tool '{}':", h.tool_name);
-                if let MessageContent::Text(text) = h.message.content.clone() { println!("  {}", text); }
-                print!("[/approve | /reject [reason] | /respond <msg>] > ");
-                io::stdout().flush().ok();
-                input.clear();
-                stdin.read_line(&mut input)?;
-                let line = input.trim();
-                if line.starts_with("/approve") {
-                    let msg = agent.resume_hitl(HitlAction::Approve).await?;
-                    print_agent_message(&msg);
-                    continue;
-                } else if line.starts_with("/reject") {
-                    let reason = line.strip_prefix("/reject").unwrap_or("").trim();
-                    let msg = agent.resume_hitl(HitlAction::Reject { reason: if reason.is_empty() { None } else { Some(reason.to_string()) } }).await?;
-                    print_agent_message(&msg);
-                    continue;
-                } else if let Some(rest) = line.strip_prefix("/respond ") {
-                    let msg = agent.resume_hitl(HitlAction::Respond { message: AgentMessage { role: MessageRole::System, content: MessageContent::Text(rest.to_string()), metadata: None } }).await?;
-                    print_agent_message(&msg);
-                    continue;
-                } else if line == "/exit" { break; }
-                else {
-                    println!("Unknown HITL command. Use /approve, /reject [reason], /respond <msg>, /exit");
-                    continue;
-                }
+            println!("HITL pending for tool '{}':", h.tool_name);
+            if let MessageContent::Text(text) = h.message.content.clone() {
+                println!("  {}", text);
+            }
+            print!("[/approve | /reject [reason] | /respond <msg>] > ");
+            io::stdout().flush().ok();
+            input.clear();
+            stdin.read_line(&mut input)?;
+            let line = input.trim();
+            if line.starts_with("/approve") {
+                let msg = agent.resume_hitl(HitlAction::Approve).await?;
+                print_agent_message(&msg);
+                continue;
+            } else if line.starts_with("/reject") {
+                let reason = line.strip_prefix("/reject").unwrap_or("").trim();
+                let msg = agent
+                    .resume_hitl(HitlAction::Reject {
+                        reason: if reason.is_empty() {
+                            None
+                        } else {
+                            Some(reason.to_string())
+                        },
+                    })
+                    .await?;
+                print_agent_message(&msg);
+                continue;
+            } else if let Some(rest) = line.strip_prefix("/respond ") {
+                let msg = agent
+                    .resume_hitl(HitlAction::Respond {
+                        message: AgentMessage {
+                            role: MessageRole::System,
+                            content: MessageContent::Text(rest.to_string()),
+                            metadata: None,
+                        },
+                    })
+                    .await?;
+                print_agent_message(&msg);
+                continue;
+            } else if line == "/exit" {
+                break;
+            } else {
+                println!(
+                    "Unknown HITL command. Use /approve, /reject [reason], /respond <msg>, /exit"
+                );
+                continue;
+            }
         }
 
         print!("You> ");
         io::stdout().flush().ok();
         input.clear();
-        if stdin.read_line(&mut input).is_err() { break; }
+        if stdin.read_line(&mut input).is_err() {
+            break;
+        }
         let line = input.trim();
-        if line.is_empty() { continue; }
-        if line == "/exit" { break; }
+        if line.is_empty() {
+            continue;
+        }
+        if line == "/exit" {
+            break;
+        }
         if line.starts_with('/') {
             println!("Unknown command. Use /exit or interact when prompted for HITL.");
             continue;
@@ -337,7 +474,11 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
 
         match agent
             .handle_message(
-                AgentMessage { role: MessageRole::User, content: MessageContent::Text(line.to_string()), metadata: None },
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text(line.to_string()),
+                    metadata: None,
+                },
                 Arc::new(AgentStateSnapshot::default()),
             )
             .await
@@ -351,10 +492,16 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
 
         // Auto-run a few follow-up planning cycles unless HITL is pending
         for _ in 0..auto_steps {
-            if agent.current_interrupt().is_some() { break; }
+            if agent.current_interrupt().is_some() {
+                break;
+            }
             match agent
                 .handle_message(
-                    AgentMessage { role: MessageRole::User, content: MessageContent::Text("continue".to_string()), metadata: None },
+                    AgentMessage {
+                        role: MessageRole::User,
+                        content: MessageContent::Text("continue".to_string()),
+                        metadata: None,
+                    },
                     Arc::new(AgentStateSnapshot::default()),
                 )
                 .await
@@ -412,7 +559,9 @@ fn print_progress_from_text(text: &str) {
         } else {
             if trimmed.is_empty() {
                 empty_count += 1;
-                if empty_count >= 1 { break; }
+                if empty_count >= 1 {
+                    break;
+                }
                 continue;
             }
             empty_count = 0;
@@ -462,11 +611,17 @@ fn parse_todos_from_debug(text: &str) -> Option<Vec<(String, String)>> {
                     let status_end = after.find([',', '}']).unwrap_or(after.len());
                     let mut status = after[..status_end].trim().to_string();
                     // Normalize variants like TodoStatus::InProgress
-                    if let Some(pos) = status.rfind("::") { status = status[pos+2..].to_string(); }
+                    if let Some(pos) = status.rfind("::") {
+                        status = status[pos + 2..].to_string();
+                    }
                     items.push((status, content));
                 }
             }
         }
     }
-    if items.is_empty() { None } else { Some(items) }
+    if items.is_empty() {
+        None
+    } else {
+        Some(items)
+    }
 }

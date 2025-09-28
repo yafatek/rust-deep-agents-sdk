@@ -10,7 +10,10 @@ type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Boxed async function signature for a tool implementation.
 pub type BoxedToolFn = Arc<
-    dyn Fn(ToolInvocation) -> BoxFuture<'static, anyhow::Result<ToolResponse>> + Send + Sync + 'static,
+    dyn Fn(ToolInvocation) -> BoxFuture<'static, anyhow::Result<ToolResponse>>
+        + Send
+        + Sync
+        + 'static,
 >;
 
 /// Wrap a plain async function/closure as a ToolHandle.
@@ -33,13 +36,18 @@ pub struct FunctionTool {
 impl FunctionTool {
     /// Create a new FunctionTool from a name and async function/closure.
     pub fn new(name: impl Into<String>, f: BoxedToolFn) -> Self {
-        Self { name: name.into(), f }
+        Self {
+            name: name.into(),
+            f,
+        }
     }
 }
 
 #[async_trait]
 impl ToolHandle for FunctionTool {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
         (self.f)(invocation).await
@@ -96,4 +104,3 @@ mod tests {
         }
     }
 }
-

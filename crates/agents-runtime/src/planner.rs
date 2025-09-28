@@ -80,7 +80,10 @@ fn parse_planner_output(message: &AgentMessage) -> anyhow::Result<PlannerOutputV
             // Try to parse JSON even when returned as text, optionally in code fences.
             if let Some(parsed) = parse_from_text(text) {
                 if let Some(tc) = parsed.tool_calls.first() {
-                    return Ok(PlannerOutputVariant::ToolCall { name: tc.name.clone(), args: tc.args.clone() });
+                    return Ok(PlannerOutputVariant::ToolCall {
+                        name: tc.name.clone(),
+                        args: tc.args.clone(),
+                    });
                 }
                 if let Some(resp) = parsed.response {
                     return Ok(PlannerOutputVariant::Respond(resp));
@@ -94,7 +97,10 @@ fn parse_planner_output(message: &AgentMessage) -> anyhow::Result<PlannerOutputV
 fn parse_from_value(value: Value) -> anyhow::Result<PlannerOutputVariant> {
     let parsed: PlannerOutput = serde_json::from_value(value)?;
     if let Some(tool_call) = parsed.tool_calls.first() {
-        Ok(PlannerOutputVariant::ToolCall { name: tool_call.name.clone(), args: tool_call.args.clone() })
+        Ok(PlannerOutputVariant::ToolCall {
+            name: tool_call.name.clone(),
+            args: tool_call.args.clone(),
+        })
     } else if let Some(response) = parsed.response {
         Ok(PlannerOutputVariant::Respond(response))
     } else {
@@ -104,15 +110,25 @@ fn parse_from_value(value: Value) -> anyhow::Result<PlannerOutputVariant> {
 
 fn parse_from_text(text: &str) -> Option<PlannerOutput> {
     // 1) Raw JSON
-    if let Some(parsed) = decode_output_from_str(text) { return Some(parsed); }
+    if let Some(parsed) = decode_output_from_str(text) {
+        return Some(parsed);
+    }
     // 2) Remove common code fences ```json ... ``` or ``` ... ```
     let trimmed = text.trim();
     if trimmed.starts_with("```") {
         let without_ticks = trimmed.trim_start_matches("```");
         // optional language tag (e.g., json)
-        let without_lang = without_ticks.trim_start_matches(|c: char| c.is_alphabetic()).trim_start();
-        let inner = if let Some(end) = without_lang.rfind("```") { &without_lang[..end] } else { without_lang };
-        if let Some(parsed) = decode_output_from_str(inner) { return Some(parsed); }
+        let without_lang = without_ticks
+            .trim_start_matches(|c: char| c.is_alphabetic())
+            .trim_start();
+        let inner = if let Some(end) = without_lang.rfind("```") {
+            &without_lang[..end]
+        } else {
+            without_lang
+        };
+        if let Some(parsed) = decode_output_from_str(inner) {
+            return Some(parsed);
+        }
     }
     None
 }
