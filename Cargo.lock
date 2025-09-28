@@ -1297,6 +1297,8 @@ dependencies = [
  "anyhow",
  "dotenv",
  "meval",
+ "reqwest",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",

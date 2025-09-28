@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use agents_core::{
     agent::AgentHandle,
-    messaging::{AgentMessage, MessageContent, MessageRole},
+    messaging::AgentMessage,
     persistence::InMemoryCheckpointer,
     state::AgentStateSnapshot,
 };
@@ -156,12 +156,6 @@ async fn send_message(
     agent: &agents_runtime::graph::DeepAgent,
     content: &str,
 ) -> Result<AgentMessage> {
-    let user_message = AgentMessage {
-        role: MessageRole::User,
-        content: MessageContent::Text(content.to_string()),
-        metadata: None,
-    };
-
     let state = Arc::new(AgentStateSnapshot::default());
-    agent.handle_message(user_message, state).await
+    agent.handle_message(content.to_string(), state).await
 }

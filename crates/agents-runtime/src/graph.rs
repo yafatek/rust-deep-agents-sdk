@@ -16,9 +16,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::middleware::{
-    AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware, FilesystemMiddleware, HitlPolicy,
-    HumanInLoopMiddleware, MiddlewareContext, ModelRequest, PlanningMiddleware, SubAgentDescriptor,
-    SubAgentMiddleware, SubAgentRegistration, SummarizationMiddleware, AgentMiddleware,
+    AgentMiddleware, AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware,
+    FilesystemMiddleware, HitlPolicy, HumanInLoopMiddleware, MiddlewareContext, ModelRequest,
+    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
+    SummarizationMiddleware,
 };
 use crate::planner::LlmBackedPlanner;
 use crate::providers::{
@@ -808,6 +809,30 @@ impl DeepAgent {
             }
         }
     }
+
+    /// Handle message from string input - converts string to AgentMessage internally
+    pub async fn handle_message(
+        &self,
+        input: impl AsRef<str>,
+        state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<AgentMessage> {
+        self.handle_message_with_metadata(input, None, state).await
+    }
+
+    /// Handle message from string input with metadata - converts string to AgentMessage internally
+    pub async fn handle_message_with_metadata(
+        &self,
+        input: impl AsRef<str>,
+        metadata: Option<MessageMetadata>,
+        state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<AgentMessage> {
+        let agent_message = AgentMessage {
+            role: MessageRole::User,
+            content: MessageContent::Text(input.as_ref().to_string()),
+            metadata,
+        };
+        self.handle_message_internal(agent_message, state).await
+    }
 }
 
 #[async_trait]
@@ -817,6 +842,17 @@ impl AgentHandle for DeepAgent {
     }
 
     async fn handle_message(
+        &self,
+        input: AgentMessage,
+        _state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<AgentMessage> {
+        self.handle_message_internal(input, _state).await
+    }
+}
+
+impl DeepAgent {
+    /// Internal method that contains the actual message handling logic
+    async fn handle_message_internal(
         &self,
         input: AgentMessage,
         _state: Arc<AgentStateSnapshot>,
@@ -911,11 +947,7 @@ mod tests {
     async fn send_user(agent: &DeepAgent, text: &str) -> AgentMessage {
         agent
             .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text(text.into()),
-                    metadata: None,
-                },
+                text,
                 Arc::new(AgentStateSnapshot::default()),
             )
             .await
@@ -1183,12 +1215,12 @@ mod tests {
     #[tokio::test]
     async fn deep_agent_applies_summarization() {
         let planner = Arc::new(AlwaysRespondPlanner);
-        let agent = create_deep_agent_from_config(DeepAgentConfig::new("Assist", planner).with_summarization(
-            SummarizationConfig {
+        let agent = create_deep_agent_from_config(
+            DeepAgentConfig::new("Assist", planner).with_summarization(SummarizationConfig {
                 messages_to_keep: 1,
                 summary_note: "Summary".into(),
-            },
-        ));
+            }),
+        );
 
         send_user(&agent, "first").await;
         let response = send_user(&agent, "second").await;

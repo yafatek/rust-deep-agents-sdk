@@ -339,11 +339,10 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
         .unwrap_or(2);
 
     // Build planner using OpenAI and our example-local planner wrapper
-    let main_model: Arc<dyn LanguageModel> = Arc::new(
-        agents_runtime::providers::openai::OpenAiChatModel::new(
+    let main_model: Arc<dyn LanguageModel> =
+        Arc::new(agents_runtime::providers::openai::OpenAiChatModel::new(
             OpenAiConfig::new(api_key.clone(), model.clone()).with_api_url(api_url.clone()),
-        )?,
-    );
+        )?);
     let main_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(main_model));
     let mut cfg = DeepAgentConfig::new(instructions, main_planner);
     if enable_summary {
@@ -356,11 +355,10 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
     // Optional web-researcher subagent using Tavily tool
     if let Ok(tavily_key) = env::var("TAVILY_API_KEY") {
         let tavily_url = env::var("TAVILY_API_URL").ok();
-        let web_model: Arc<dyn LanguageModel> = Arc::new(
-            agents_runtime::providers::openai::OpenAiChatModel::new(
+        let web_model: Arc<dyn LanguageModel> =
+            Arc::new(agents_runtime::providers::openai::OpenAiChatModel::new(
                 OpenAiConfig::new(api_key.clone(), model.clone()).with_api_url(api_url.clone()),
-            )?,
-        );
+            )?);
         let web_planner: Arc<dyn PlannerHandle> = Arc::new(ExampleLlmPlanner::new(web_model));
         let web_cfg = DeepAgentConfig::new(
             format!(
@@ -471,11 +469,7 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
 
         match agent
             .handle_message(
-                AgentMessage {
-                    role: MessageRole::User,
-                    content: MessageContent::Text(line.to_string()),
-                    metadata: None,
-                },
+                line.to_string(),
                 Arc::new(AgentStateSnapshot::default()),
             )
             .await
@@ -494,11 +488,7 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
             }
             match agent
                 .handle_message(
-                    AgentMessage {
-                        role: MessageRole::User,
-                        content: MessageContent::Text("continue".to_string()),
-                        metadata: None,
-                    },
+                    "continue".to_string(),
                     Arc::new(AgentStateSnapshot::default()),
                 )
                 .await
