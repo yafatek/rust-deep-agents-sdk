@@ -37,6 +37,126 @@ pub struct DeepAgentConfig {
     pub summarization: Option<SummarizationConfig>,
     pub tool_interrupts: HashMap<String, HitlPolicy>,
     pub builtin_tools: Option<HashSet<String>>,
+    pub auto_general_purpose: bool,
+}
+
+/// Configuration for creating and registering a subagent using a simple, Python-like shape.
+pub struct SubAgentConfig {
+    pub name: String,
+    pub description: String,
+    pub instructions: String,
+    pub tools: Option<Vec<Arc<dyn ToolHandle>>>,
+    pub planner: Option<Arc<dyn PlannerHandle>>,
+}
+
+/// Builder API to assemble a DeepAgent in a single fluent flow, mirroring the Python
+/// `create_configurable_agent` experience. Prefer this for ergonomic construction.
+pub struct ConfigurableAgentBuilder {
+    instructions: String,
+    planner: Option<Arc<dyn PlannerHandle>>,
+    tools: Vec<Arc<dyn ToolHandle>>,
+    subagents: Vec<SubAgentConfig>,
+    summarization: Option<SummarizationConfig>,
+    tool_interrupts: HashMap<String, HitlPolicy>,
+    builtin_tools: Option<HashSet<String>>,
+    auto_general_purpose: bool,
+}
+
+impl ConfigurableAgentBuilder {
+    pub fn new(instructions: impl Into<String>) -> Self {
+        Self {
+            instructions: instructions.into(),
+            planner: None,
+            tools: Vec::new(),
+            subagents: Vec::new(),
+            summarization: None,
+            tool_interrupts: HashMap::new(),
+            builtin_tools: None,
+            auto_general_purpose: true,
+        }
+    }
+
+    pub fn with_planner(mut self, planner: Arc<dyn PlannerHandle>) -> Self {
+        self.planner = Some(planner);
+        self
+    }
+
+    pub fn with_openai_chat(self, config: OpenAiConfig) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(OpenAiChatModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(self.with_planner(planner))
+    }
+
+    pub fn with_anthropic_messages(self, config: AnthropicConfig) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(AnthropicMessagesModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(self.with_planner(planner))
+    }
+
+    pub fn with_gemini_chat(self, config: GeminiConfig) -> anyhow::Result<Self> {
+        let model: Arc<dyn LanguageModel> = Arc::new(GeminiChatModel::new(config)?);
+        let planner: Arc<dyn PlannerHandle> = Arc::new(LlmBackedPlanner::new(model));
+        Ok(self.with_planner(planner))
+    }
+
+    pub fn with_tool(mut self, tool: Arc<dyn ToolHandle>) -> Self {
+        self.tools.push(tool);
+        self
+    }
+
+    pub fn with_tools<I>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Arc<dyn ToolHandle>>,
+    {
+        self.tools.extend(tools);
+        self
+    }
+
+    pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
+        self.subagents.push(cfg);
+        self
+    }
+
+    pub fn with_summarization(mut self, config: SummarizationConfig) -> Self {
+        self.summarization = Some(config);
+        self
+    }
+
+    pub fn with_tool_interrupt(mut self, tool_name: impl Into<String>, policy: HitlPolicy) -> Self {
+        self.tool_interrupts.insert(tool_name.into(), policy);
+        self
+    }
+
+    pub fn with_builtin_tools<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.builtin_tools = Some(names.into_iter().map(|s| s.into()).collect());
+        self
+    }
+
+    pub fn with_auto_general_purpose(mut self, enabled: bool) -> Self {
+        self.auto_general_purpose = enabled;
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<DeepAgent> {
+        let planner = self
+            .planner
+            .ok_or_else(|| anyhow::anyhow!("planner must be set (use with_planner or with_*_chat)"))?;
+
+        let mut cfg = DeepAgentConfig::new(self.instructions, planner)
+            .with_auto_general_purpose(self.auto_general_purpose);
+
+        if let Some(sum) = self.summarization { cfg = cfg.with_summarization(sum); }
+        if let Some(selected) = self.builtin_tools { cfg = cfg.with_builtin_tools(selected); }
+        for (k, v) in self.tool_interrupts { cfg = cfg.with_tool_interrupt(k, v); }
+        for t in self.tools { cfg = cfg.with_tool(t); }
+        for s in self.subagents { cfg = cfg.with_subagent_config(s); }
+
+        Ok(create_deep_agent(cfg))
+    }
 }
 
 #[derive(Clone)]
@@ -55,6 +175,7 @@ impl DeepAgentConfig {
             summarization: None,
             tool_interrupts: HashMap::new(),
             builtin_tools: None,
+            auto_general_purpose: true,
         }
     }
 
@@ -96,6 +217,42 @@ impl DeepAgentConfig {
         self
     }
 
+    /// Enable/disable automatic registration of a "general-purpose" subagent.
+    /// Enabled by default; set to false to opt out.
+    pub fn with_auto_general_purpose(mut self, enabled: bool) -> Self {
+        self.auto_general_purpose = enabled;
+        self
+    }
+
+    /// Convenience: construct and register a subagent from a simple config.
+    pub fn with_subagent_config(mut self, cfg: SubAgentConfig) -> Self {
+        let planner = cfg
+            .planner
+            .unwrap_or_else(|| self.planner.clone());
+        let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
+            .with_auto_general_purpose(false);
+        if let Some(ref selected) = self.builtin_tools {
+            sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
+        }
+        if let Some(ref sum) = self.summarization {
+            sub_cfg = sub_cfg.with_summarization(sum.clone());
+        }
+        // Inherit tool interrupts not by default; subagents typically don't need host HITL policies.
+        // Attach provided tools or inherit base tools
+        if let Some(tools) = cfg.tools {
+            for t in tools { sub_cfg = sub_cfg.with_tool(t); }
+        } else {
+            for t in &self.tools { sub_cfg = sub_cfg.with_tool(t.clone()); }
+        }
+
+        let sub_agent = create_deep_agent(sub_cfg);
+        self = self.with_subagent(
+            SubAgentDescriptor { name: cfg.name, description: cfg.description },
+            Arc::new(sub_agent),
+        );
+        self
+    }
+
     pub fn with_openai_chat(
         instructions: impl Into<String>,
         config: OpenAiConfig,
@@ -130,7 +287,36 @@ pub fn create_deep_agent(config: DeepAgentConfig) -> DeepAgent {
 
     let planning = Arc::new(PlanningMiddleware::new(state.clone()));
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
-    let subagent = Arc::new(SubAgentMiddleware::new(config.subagents.clone()));
+    // Prepare subagent registrations, optionally injecting a general-purpose subagent
+    let mut registrations = config.subagents.clone();
+    if config.auto_general_purpose {
+        let has_gp = registrations
+            .iter()
+            .any(|r| r.descriptor.name == "general-purpose");
+        if !has_gp {
+            // Create a subagent with inherited planner/tools and same instructions
+            let mut sub_cfg = DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
+                .with_auto_general_purpose(false);
+            if let Some(ref selected) = config.builtin_tools {
+                sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
+            }
+            if let Some(ref sum) = config.summarization {
+                sub_cfg = sub_cfg.with_summarization(sum.clone());
+            }
+            for t in &config.tools { sub_cfg = sub_cfg.with_tool(t.clone()); }
+
+            let gp = create_deep_agent(sub_cfg);
+            registrations.push(SubAgentRegistration {
+                descriptor: SubAgentDescriptor {
+                    name: "general-purpose".into(),
+                    description: "Default reasoning agent".into(),
+                },
+                agent: Arc::new(gp),
+            });
+        }
+    }
+
+    let subagent = Arc::new(SubAgentMiddleware::new(registrations));
     let base_prompt = Arc::new(BaseSystemPromptMiddleware);
     let summarization = config.summarization.as_ref().map(|cfg| {
         Arc::new(SummarizationMiddleware::new(
@@ -212,7 +398,7 @@ impl DeepAgent {
     }
 
     fn should_include(&self, name: &str) -> bool {
-        let is_builtin = BUILTIN_TOOL_NAMES.iter().any(|n| *n == name);
+        let is_builtin = BUILTIN_TOOL_NAMES.contains(&name);
         if !is_builtin {
             return true;
         }
@@ -312,6 +498,25 @@ impl DeepAgent {
                 self.append_history(message.clone());
                 Ok(message)
             }
+            HitlAction::Edit { action, args } => {
+                // Execute the edited tool/action with provided args
+                let tools = self.collect_tools();
+                if let Some(tool) = tools.get(&action).cloned() {
+                    let result = self
+                        .execute_tool(tool, action, args)
+                        .await?;
+                    Ok(result)
+                } else {
+                    Ok(AgentMessage {
+                        role: MessageRole::System,
+                        content: MessageContent::Text(format!(
+                            "Edited tool '{}' not available",
+                            action
+                        )),
+                        metadata: None,
+                    })
+                }
+            }
         }
     }
 }
@@ -380,7 +585,7 @@ impl AgentHandle for DeepAgent {
                         }
                     }
                     let response = tool
-                        .invoke(agents_core::messaging::ToolInvocation {
+                        .invoke(ToolInvocation {
                             tool_name,
                             args: payload,
                             tool_call_id: None,
@@ -613,6 +818,108 @@ mod tests {
         }
     }
 
+    struct AlwaysTextPlanner(&'static str);
+
+    #[async_trait]
+    impl PlannerHandle for AlwaysTextPlanner {
+        async fn plan(
+            &self,
+            _context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::Respond {
+                    message: AgentMessage {
+                        role: MessageRole::Agent,
+                        content: MessageContent::Text(self.0.to_string()),
+                        metadata: None,
+                    },
+                },
+            })
+        }
+    }
+
+    #[allow(dead_code)]
+    struct GpDelegatePlanner;
+
+    #[async_trait]
+    impl PlannerHandle for GpDelegatePlanner {
+        async fn plan(
+            &self,
+            _context: PlannerContext,
+            _state: Arc<AgentStateSnapshot>,
+        ) -> anyhow::Result<PlannerDecision> {
+            Ok(PlannerDecision {
+                next_action: PlannerAction::CallTool {
+                    tool_name: "task".into(),
+                    payload: json!({
+                        "description": "Ask GP agent",
+                        "subagent_type": "general-purpose"
+                    }),
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn default_general_purpose_subagent_is_available() {
+        // Main agent delegates to general-purpose; GP uses AlwaysTextPlanner to respond
+        // let main_planner = Arc::new(GpDelegatePlanner);
+        let gp_planner = Arc::new(AlwaysTextPlanner("gp-ok"));
+        // Build agent but override planner for the GP by setting it as the main planner
+        // and ensuring GP inherits it
+        let agent = create_deep_agent(DeepAgentConfig::new("Assist", gp_planner));
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("delegate to gp".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        match response.content {
+            MessageContent::Text(text) => assert_eq!(text, "gp-ok"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn subagent_convenience_builder_registers_and_delegates() {
+        let main_planner = Arc::new(DelegatePlanner);
+        let custom_planner = Arc::new(AlwaysTextPlanner("custom-ok"));
+        let agent = create_deep_agent(
+            DeepAgentConfig::new("Assist", main_planner).with_subagent_config(SubAgentConfig {
+                name: "stub-agent".into(),
+                description: "Stub Agent".into(),
+                instructions: "Custom".into(),
+                tools: None,
+                planner: Some(custom_planner),
+            }),
+        );
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("delegate".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+
+        match response.content {
+            MessageContent::Text(text) => assert_eq!(text, "custom-ok"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
     struct AlwaysRespondPlanner;
 
     #[async_trait]
@@ -749,5 +1056,59 @@ mod tests {
             agent.current_interrupt(),
             Some(AgentInterrupt::HumanInLoop(_))
         ));
+    }
+
+    struct NoopTool;
+
+    #[async_trait]
+    impl ToolHandle for NoopTool {
+        fn name(&self) -> &str { "noop" }
+        async fn invoke(&self, _invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
+            Ok(ToolResponse::Message(AgentMessage {
+                role: MessageRole::Tool,
+                content: MessageContent::Text("edited-ok".into()),
+                metadata: None,
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn hitl_edit_changes_tool_and_args() {
+        // Planner calls 'sensitive' which requires approval; we then edit to call 'noop'.
+        let planner = Arc::new(ToolPlanner);
+        let config = DeepAgentConfig::new("Assist", planner)
+            .with_tool(Arc::new(SensitiveTool))
+            .with_tool(Arc::new(NoopTool))
+            .with_tool_interrupt(
+                "sensitive",
+                HitlPolicy { allow_auto: false, note: Some("Needs approval".into()) },
+            );
+        let agent = create_deep_agent(config);
+
+        let response = agent
+            .handle_message(
+                AgentMessage {
+                    role: MessageRole::User,
+                    content: MessageContent::Text("call tool".into()),
+                    metadata: None,
+                },
+                Arc::new(AgentStateSnapshot::default()),
+            )
+            .await
+            .unwrap();
+        match response.content {
+            MessageContent::Text(text) => assert!(text.contains("HITL_REQUIRED")),
+            other => panic!("expected text, got {other:?}"),
+        }
+        assert!(matches!(agent.current_interrupt(), Some(AgentInterrupt::HumanInLoop(_))));
+
+        let edited = agent
+            .resume_hitl(HitlAction::Edit { action: "noop".into(), args: json!({}) })
+            .await
+            .unwrap();
+        match edited.content {
+            MessageContent::Text(text) => assert_eq!(text, "edited-ok"),
+            other => panic!("expected text, got {other:?}"),
+        }
     }
 }

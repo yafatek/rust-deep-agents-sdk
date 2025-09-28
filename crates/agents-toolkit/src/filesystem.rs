@@ -149,24 +149,6 @@ impl ToolHandle for WriteFileTool {
     }
 }
 
-#[derive(Clone)]
-pub struct EditFileTool {
-    pub name: String,
-    pub state: Arc<RwLock<AgentStateSnapshot>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct EditFileArgs {
-    #[serde(rename = "file_path")]
-    path: String,
-    #[serde(rename = "old_string")]
-    old: String,
-    #[serde(rename = "new_string")]
-    new: String,
-    #[serde(default)]
-    replace_all: bool,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,7 +230,150 @@ mod tests {
         let response = tool.invoke(invocation).await.unwrap();
         match response {
             ToolResponse::Command(Command { state, messages }) => {
-                assert!(state.files.unwrap().get("notes.txt").is_some());
+                assert!(state.files.unwrap().contains_key("notes.txt"));
+                assert_eq!(
+                    messages[0]
+                        .metadata
+                        .as_ref()
+                        .unwrap()
+                        .tool_call_id
+                        .as_deref(),
+                    Some("call-3")
+                );
+            }
+            _ => panic!("expected command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn edit_file_missing_returns_error_message() {
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let tool = EditFileTool {
+            name: "edit_file".into(),
+            state,
+        };
+        let invocation = ToolInvocation {
+            tool_name: "edit_file".into(),
+            args: json!({
+                "file_path": "missing.txt",
+                "old_string": "foo",
+                "new_string": "bar"
+            }),
+            tool_call_id: Some("call-4".into()),
+        };
+        let response = tool.invoke(invocation).await.unwrap();
+        match response {
+            ToolResponse::Message(msg) => match msg.content {
+                MessageContent::Text(text) => {
+                    assert!(text.contains("missing.txt"));
+                }
+                other => panic!("expected text, got {other:?}"),
+            },
+            _ => panic!("expected message"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct EditFileTool {
+    pub name: String,
+    pub state: Arc<RwLock<AgentStateSnapshot>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EditFileArgs {
+    #[serde(rename = "file_path")]
+    path: String,
+    #[serde(rename = "old_string")]
+    old: String,
+    #[serde(rename = "new_string")]
+    new: String,
+    #[serde(default)]
+    replace_all: bool,
+}
+
+#[cfg(test)]
+mod tests_old_location {
+    use super::*;
+    use agents_core::command::Command;
+    use agents_core::messaging::{MessageContent, MessageRole, ToolInvocation};
+    use agents_core::state::AgentStateSnapshot;
+    use serde_json::json;
+
+    fn shared_state_with_file(path: &str, content: &str) -> Arc<RwLock<AgentStateSnapshot>> {
+        let mut snapshot = AgentStateSnapshot::default();
+        snapshot.files.insert(path.to_string(), content.to_string());
+        Arc::new(RwLock::new(snapshot))
+    }
+
+    #[tokio::test]
+    async fn ls_tool_lists_files() {
+        let state = shared_state_with_file("notes.txt", "Hello");
+        let tool = LsTool {
+            name: "ls".to_string(),
+            state: state.clone(),
+        };
+        let invocation = ToolInvocation {
+            tool_name: "ls".into(),
+            args: serde_json::Value::Null,
+            tool_call_id: Some("call-1".into()),
+        };
+
+        let response = tool.invoke(invocation).await.unwrap();
+        match response {
+            ToolResponse::Message(msg) => {
+                assert_eq!(msg.metadata.unwrap().tool_call_id.unwrap(), "call-1");
+                assert!(matches!(msg.role, MessageRole::Tool));
+                match msg.content {
+                    MessageContent::Json(value) => {
+                        assert_eq!(value, json!(["notes.txt"]));
+                    }
+                    other => panic!("expected json, got {other:?}"),
+                }
+            }
+            _ => panic!("expected message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_file_returns_formatted_content() {
+        let state = shared_state_with_file("main.rs", "fn main() {}\nprintln!(\"hi\");");
+        let tool = ReadFileTool {
+            name: "read_file".into(),
+            state,
+        };
+        let invocation = ToolInvocation {
+            tool_name: "read_file".into(),
+            args: json!({ "file_path": "main.rs", "offset": 0, "limit": 10 }),
+            tool_call_id: Some("call-2".into()),
+        };
+
+        let response = tool.invoke(invocation).await.unwrap();
+        match response {
+            ToolResponse::Message(msg) => match msg.content {
+                MessageContent::Text(text) => assert!(text.contains("fn main")),
+                other => panic!("expected text, got {other:?}"),
+            },
+            _ => panic!("expected message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn write_file_returns_command_with_update() {
+        let state = Arc::new(RwLock::new(AgentStateSnapshot::default()));
+        let tool = WriteFileTool {
+            name: "write_file".into(),
+            state: state.clone(),
+        };
+        let invocation = ToolInvocation {
+            tool_name: "write_file".into(),
+            args: json!({ "file_path": "notes.txt", "content": "new" }),
+            tool_call_id: Some("call-3".into()),
+        };
+        let response = tool.invoke(invocation).await.unwrap();
+        match response {
+            ToolResponse::Command(Command { state, messages }) => {
+                assert!(state.files.unwrap().contains_key("notes.txt"));
                 assert_eq!(
                     messages[0]
                         .metadata

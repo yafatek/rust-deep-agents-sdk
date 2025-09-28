@@ -295,9 +295,7 @@ No prose outside JSON. Ensure valid, parseable JSON."#;
     loop {
         // Resolve pending HITL if any
         if let Some(interrupt) = agent.current_interrupt() {
-            let h = match interrupt {
-                agents_core::hitl::AgentInterrupt::HumanInLoop(h) => h,
-            };
+            let agents_core::hitl::AgentInterrupt::HumanInLoop(h) = interrupt;
                 println!("HITL pending for tool '{}':", h.tool_name);
                 if let MessageContent::Text(text) = h.message.content.clone() { println!("  {}", text); }
                 print!("[/approve | /reject [reason] | /respond <msg>] > ");
@@ -398,11 +396,11 @@ fn print_agent_message(msg: &AgentMessage) {
 fn print_progress_from_text(text: &str) {
     // Heuristic: find a section starting with a line containing "Progress"
     // and print subsequent non-empty lines (bullets or short lines) until a blank gap of 2 lines.
-    let mut lines = text.lines().peekable();
+    let lines = text.lines().peekable();
     let mut in_progress = false;
     let mut printed = false;
     let mut empty_count = 0;
-    while let Some(line) = lines.next() {
+    for line in lines {
         let trimmed = line.trim();
         if !in_progress {
             if trimmed.to_lowercase().starts_with("progress") {
@@ -461,7 +459,7 @@ fn parse_todos_from_debug(text: &str) -> Option<Vec<(String, String)>> {
                 let status_label = "status: ";
                 if let Some(status_idx) = rest.find(status_label) {
                     let after = &rest[status_idx + status_label.len()..];
-                    let status_end = after.find(|c: char| c == ',' || c == '}').unwrap_or(after.len());
+                    let status_end = after.find([',', '}']).unwrap_or(after.len());
                     let mut status = after[..status_end].trim().to_string();
                     // Normalize variants like TodoStatus::InProgress
                     if let Some(pos) = status.rfind("::") { status = status[pos+2..].to_string(); }
