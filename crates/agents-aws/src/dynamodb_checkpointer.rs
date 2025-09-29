@@ -34,10 +34,7 @@ use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
 use anyhow::Context;
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{
-    types::AttributeValue,
-    Client,
-};
+use aws_sdk_dynamodb::{types::AttributeValue, Client};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -108,8 +105,8 @@ impl Checkpointer for DynamoDbCheckpointer {
         thread_id: &ThreadId,
         state: &AgentStateSnapshot,
     ) -> anyhow::Result<()> {
-        let state_json = serde_json::to_string(state)
-            .context("Failed to serialize agent state to JSON")?;
+        let state_json =
+            serde_json::to_string(state).context("Failed to serialize agent state to JSON")?;
 
         let mut item = HashMap::new();
         item.insert(
@@ -144,10 +141,7 @@ impl Checkpointer for DynamoDbCheckpointer {
         Ok(())
     }
 
-    async fn load_state(
-        &self,
-        thread_id: &ThreadId,
-    ) -> anyhow::Result<Option<AgentStateSnapshot>> {
+    async fn load_state(&self, thread_id: &ThreadId) -> anyhow::Result<Option<AgentStateSnapshot>> {
         let mut key = HashMap::new();
         key.insert(
             "thread_id".to_string(),
@@ -365,4 +359,3 @@ mod tests {
             .expect("Failed to delete thread");
     }
 }
-

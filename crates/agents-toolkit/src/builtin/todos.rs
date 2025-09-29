@@ -31,7 +31,9 @@ impl Tool for WriteTodosTool {
             "status".to_string(),
             ToolParameterSchema {
                 schema_type: "string".to_string(),
-                description: Some("Status of the todo (pending, in_progress, completed)".to_string()),
+                description: Some(
+                    "Status of the todo (pending, in_progress, completed)".to_string(),
+                ),
                 enum_values: Some(vec![
                     serde_json::json!("pending"),
                     serde_json::json!("in_progress"),
@@ -81,7 +83,9 @@ impl Tool for WriteTodosTool {
 
         // Update mutable state if available
         if let Some(state_handle) = &ctx.state_handle {
-            let mut state = state_handle.write().expect("todo state write lock poisoned");
+            let mut state = state_handle
+                .write()
+                .expect("todo state write lock poisoned");
             state.todos = args.todos.clone();
         }
 
@@ -91,7 +95,8 @@ impl Tool for WriteTodosTool {
             ..StateDiff::default()
         };
 
-        let message = ctx.text_response(format!("Updated todo list with {} items", args.todos.len()));
+        let message =
+            ctx.text_response(format!("Updated todo list with {} items", args.todos.len()));
         Ok(ToolResult::with_state(message, diff))
     }
 }
@@ -137,8 +142,15 @@ mod tests {
             .unwrap();
 
         match result {
-            ToolResult::WithStateUpdate { message, state_diff } => {
-                assert!(message.content.as_text().unwrap().contains("Updated todo list"));
+            ToolResult::WithStateUpdate {
+                message,
+                state_diff,
+            } => {
+                assert!(message
+                    .content
+                    .as_text()
+                    .unwrap()
+                    .contains("Updated todo list"));
                 assert_eq!(state_diff.todos.as_ref().unwrap().len(), 2);
 
                 // Verify state was updated

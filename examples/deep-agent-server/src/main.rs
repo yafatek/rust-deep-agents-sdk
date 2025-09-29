@@ -480,7 +480,7 @@ If you need additional information for better critique, use internet_search:
 {"tool_calls": [{"name": "internet_search", "args": {"query": "your query", "max_results": 3}}]}
 ```
 
-Provide actionable feedback to improve content quality."#
+Provide actionable feedback to improve content quality."#,
     )
     .with_tools(vec![internet_search.clone()]);
 

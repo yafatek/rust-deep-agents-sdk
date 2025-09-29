@@ -14,13 +14,11 @@ use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
-use agents_core::tools::{ToolBox, ToolContext, ToolResult};
 use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
-use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole,
-};
+use agents_core::messaging::{AgentMessage, MessageContent, MessageMetadata, MessageRole};
 use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
+use agents_core::tools::{ToolBox, ToolContext, ToolResult};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -157,10 +155,7 @@ impl DeepAgent {
         payload: Value,
     ) -> anyhow::Result<AgentMessage> {
         let state_snapshot = self.state.read().unwrap().clone();
-        let ctx = ToolContext::with_mutable_state(
-            Arc::new(state_snapshot),
-            self.state.clone(),
-        );
+        let ctx = ToolContext::with_mutable_state(Arc::new(state_snapshot), self.state.clone());
 
         let result = tool.execute(payload, ctx).await?;
         Ok(self.apply_tool_result(result))
@@ -172,7 +167,10 @@ impl DeepAgent {
                 self.append_history(message.clone());
                 message
             }
-            ToolResult::WithStateUpdate { message, state_diff } => {
+            ToolResult::WithStateUpdate {
+                message,
+                state_diff,
+            } => {
                 if let Ok(mut state) = self.state.write() {
                     let command = agents_core::command::Command::with_state(state_diff);
                     command.apply_to(&mut state);
@@ -376,8 +374,8 @@ impl AgentHandle for DeepAgent {
         input: AgentMessage,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<agents_core::agent::AgentStream> {
-        use agents_core::llm::{LlmRequest, StreamChunk};
         use crate::planner::LlmBackedPlanner;
+        use agents_core::llm::{LlmRequest, StreamChunk};
 
         // Add input to history
         self.append_history(input.clone());
@@ -444,10 +442,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         };
 
         // Create a DeepAgentConfig for this sub-agent
-        let mut sub_cfg = DeepAgentConfig::new(
-            subagent_config.instructions.clone(),
-            sub_planner,
-        );
+        let mut sub_cfg = DeepAgentConfig::new(subagent_config.instructions.clone(), sub_planner);
 
         // Configure tools
         if let Some(ref tools) = subagent_config.tools {

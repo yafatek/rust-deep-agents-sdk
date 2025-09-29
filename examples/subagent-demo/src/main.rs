@@ -1,13 +1,15 @@
 use agents_sdk::{
-    get_default_model, state::AgentStateSnapshot, tool, ConfigurableAgentBuilder,
-    SubAgentConfig,
+    get_default_model, state::AgentStateSnapshot, tool, ConfigurableAgentBuilder, SubAgentConfig,
 };
 use std::sync::Arc;
 
 // Main tool: Web search (simulated)
 #[tool("Searches the web for information")]
 fn web_search(query: String) -> String {
-    format!("Web search results for '{}': [Result 1, Result 2, Result 3]", query)
+    format!(
+        "Web search results for '{}': [Result 1, Result 2, Result 3]",
+        query
+    )
 }
 
 // Specialized tool: Database query (simulated)

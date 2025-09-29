@@ -138,7 +138,10 @@ async fn main() -> anyhow::Result<()> {
     println!("✅ Agent created successfully!\n");
 
     // Try to load previous state
-    println!("🔍 Checking for previous state (thread: {})...", args.thread_id);
+    println!(
+        "🔍 Checking for previous state (thread: {})...",
+        args.thread_id
+    );
     let loaded = agent.load_state(&args.thread_id).await?;
     if loaded {
         println!("✅ Loaded previous state from checkpointer!");
@@ -203,7 +206,9 @@ async fn main() -> anyhow::Result<()> {
     println!("💡 Examples:");
     println!("   cargo run --example checkpointer-demo --features redis -- --backend redis");
     println!("   cargo run --example checkpointer-demo --features postgres -- --backend postgres");
-    println!("   cargo run --example checkpointer-demo --features dynamodb -- --backend dynamodb\n");
+    println!(
+        "   cargo run --example checkpointer-demo --features dynamodb -- --backend dynamodb\n"
+    );
 
     // Optional: Clean up demo thread
     println!("🧹 Clean up? (y/n)");

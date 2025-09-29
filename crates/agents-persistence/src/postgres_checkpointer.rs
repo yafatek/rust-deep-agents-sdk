@@ -118,8 +118,8 @@ impl Checkpointer for PostgresCheckpointer {
         thread_id: &ThreadId,
         state: &AgentStateSnapshot,
     ) -> anyhow::Result<()> {
-        let json = serde_json::to_value(state)
-            .context("Failed to serialize agent state to JSON")?;
+        let json =
+            serde_json::to_value(state).context("Failed to serialize agent state to JSON")?;
 
         let query = format!(
             r#"
@@ -147,10 +147,7 @@ impl Checkpointer for PostgresCheckpointer {
         Ok(())
     }
 
-    async fn load_state(
-        &self,
-        thread_id: &ThreadId,
-    ) -> anyhow::Result<Option<AgentStateSnapshot>> {
+    async fn load_state(&self, thread_id: &ThreadId) -> anyhow::Result<Option<AgentStateSnapshot>> {
         let query = format!(
             r#"
             SELECT state FROM {} WHERE thread_id = $1
@@ -387,8 +384,13 @@ mod tests {
         assert!(threads.contains(&"thread2".to_string()));
 
         // Cleanup
-        checkpointer.delete_thread(&"thread1".to_string()).await.unwrap();
-        checkpointer.delete_thread(&"thread2".to_string()).await.unwrap();
+        checkpointer
+            .delete_thread(&"thread1".to_string())
+            .await
+            .unwrap();
+        checkpointer
+            .delete_thread(&"thread2".to_string())
+            .await
+            .unwrap();
     }
 }
-

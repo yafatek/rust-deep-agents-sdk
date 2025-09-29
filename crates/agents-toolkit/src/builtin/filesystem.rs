@@ -312,7 +312,9 @@ mod tests {
     #[tokio::test]
     async fn ls_tool_lists_files() {
         let mut state = AgentStateSnapshot::default();
-        state.files.insert("test.txt".to_string(), "content".to_string());
+        state
+            .files
+            .insert("test.txt".to_string(), "content".to_string());
         let ctx = ToolContext::new(Arc::new(state));
 
         let tool = LsTool;
@@ -320,7 +322,8 @@ mod tests {
 
         match result {
             ToolResult::Message(msg) => {
-                let files: Vec<String> = serde_json::from_value(msg.content.as_json().unwrap().clone()).unwrap();
+                let files: Vec<String> =
+                    serde_json::from_value(msg.content.as_json().unwrap().clone()).unwrap();
                 assert_eq!(files, vec!["test.txt"]);
             }
             _ => panic!("Expected message result"),
@@ -330,9 +333,10 @@ mod tests {
     #[tokio::test]
     async fn read_file_tool_reads_content() {
         let mut state = AgentStateSnapshot::default();
-        state
-            .files
-            .insert("main.rs".to_string(), "fn main() {}\nlet x = 1;".to_string());
+        state.files.insert(
+            "main.rs".to_string(),
+            "fn main() {}\nlet x = 1;".to_string(),
+        );
         let ctx = ToolContext::new(Arc::new(state));
 
         let tool = ReadFileTool;
@@ -369,8 +373,15 @@ mod tests {
             .unwrap();
 
         match result {
-            ToolResult::WithStateUpdate { message, state_diff } => {
-                assert!(message.content.as_text().unwrap().contains("Updated file new.txt"));
+            ToolResult::WithStateUpdate {
+                message,
+                state_diff,
+            } => {
+                assert!(message
+                    .content
+                    .as_text()
+                    .unwrap()
+                    .contains("Updated file new.txt"));
                 assert!(state_diff.files.unwrap().contains_key("new.txt"));
 
                 // Verify state was updated
@@ -384,7 +395,9 @@ mod tests {
     #[tokio::test]
     async fn edit_file_tool_replaces_string() {
         let mut state = AgentStateSnapshot::default();
-        state.files.insert("test.txt".to_string(), "hello world".to_string());
+        state
+            .files
+            .insert("test.txt".to_string(), "hello world".to_string());
         let state = Arc::new(state);
         let state_handle = Arc::new(RwLock::new((*state).clone()));
         let ctx = ToolContext::with_mutable_state(state, state_handle.clone());
