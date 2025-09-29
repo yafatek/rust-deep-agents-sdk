@@ -1,0 +1,11 @@
+[package]
+name = "unified-sdk-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Test the unified SDK
+agents-sdk = { path = "../../crates/agents-sdk", features = ["full"] }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

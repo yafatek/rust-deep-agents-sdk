@@ -1,0 +1,42 @@
+[package]
+name = "agents-sdk"
+version = "0.0.1"
+edition = "2021"
+description = "High-performance Rust SDK for composing reusable AI agents with custom tools, sub-agents, and prompts"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-sdk"
+keywords = ["ai", "agents", "llm", "tools", "automation"]
+categories = ["api-bindings", "development-tools", "web-programming"]
+readme = "../../README.md"
+
+[dependencies]
+# Core dependencies (always included)
+agents-core = { version = "0.0.1", path = "../agents-core" }
+agents-runtime = { version = "0.0.1", path = "../agents-runtime" }
+
+# Optional dependencies controlled by features
+agents-toolkit = { version = "0.0.1", path = "../agents-toolkit", optional = true }
+agents-aws = { version = "0.0.1", path = "../agents-aws", optional = true }
+
+[features]
+# Default features - includes toolkit for a good out-of-box experience
+default = ["toolkit"]
+
+# Individual feature flags
+toolkit = ["dep:agents-toolkit"]
+aws = ["dep:agents-aws"]
+
+# Convenience feature for everything
+full = ["toolkit", "aws"]
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+
+[package.metadata.docs.rs]
+# Build docs with all features enabled
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
