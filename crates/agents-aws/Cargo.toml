@@ -3,9 +3,17 @@ name = "agents-aws"
 version = "0.0.1"
 edition = "2021"
 description = "AWS integrations for the Rust deep agents SDK."
+authors = ["YAFATEK <hello@yafatek.dev>"]
+license = "MIT"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-aws"
+keywords = ["ai", "agents", "llm", "aws", "cloud"]
+categories = ["api-bindings", "development-tools"]
+readme = "../../README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core" }
+agents-core = { path = "../agents-core", version = "0.0.1" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
