@@ -1,7 +1,7 @@
 //! Deep Agent HTTP Server
-//! 
+//!
 //! A production-ready web service that exposes Deep Agent functionality via REST API.
-//! 
+//!
 //! Features:
 //! - 🌐 HTTP REST API for agent interactions
 //! - 🔄 Persistent sessions with unique IDs
@@ -10,7 +10,7 @@
 //! - 🔍 Real-time web search via Tavily
 //! - 📊 Health checks and monitoring
 //! - 🚀 Production-ready with proper error handling
-//! 
+//!
 //! API Endpoints:
 //! - POST /api/v1/chat - Send message to agent
 //! - GET /api/v1/sessions/{id} - Get session info
@@ -18,9 +18,6 @@
 //! - GET /api/v1/health - Health check
 //! - GET /api/v1/agents - List available agents and tools
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -28,17 +25,20 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use uuid::Uuid;
 
 use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
-use agents_runtime::{ConfigurableAgentBuilder};
 use agents_runtime::agent::SubAgentConfig;
 use agents_runtime::providers::OpenAiConfig;
+use agents_runtime::ConfigurableAgentBuilder;
 use agents_toolkit::create_tool;
 
 #[derive(Parser)]
@@ -48,11 +48,11 @@ struct Cli {
     /// Port to bind the server to
     #[arg(short, long, default_value = "3000")]
     port: u16,
-    
+
     /// Host to bind the server to
     #[arg(long, default_value = "0.0.0.0")]
     host: String,
-    
+
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -118,7 +118,7 @@ struct AgentStatus {
 struct TodoItem {
     id: String,
     content: String,
-    status: String, // "pending", "in_progress", "completed"
+    status: String,   // "pending", "in_progress", "completed"
     priority: String, // "high", "medium", "low"
 }
 
@@ -194,10 +194,10 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
     }
 
     let tavily_response: TavilyResponse = response.json().await?;
-    
+
     let mut formatted_results = String::new();
     formatted_results.push_str(&format!("# Search Results for: '{}'\n\n", query));
-    
+
     for (i, result) in tavily_response.results.iter().enumerate() {
         formatted_results.push_str(&format!(
             "## Source {}: {}\n**URL:** {}\n**Relevance:** {:.2}\n\n**Content:**\n{}\n\n---\n\n",
@@ -208,11 +208,11 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
             result.content.chars().take(300).collect::<String>() + "..."
         ));
     }
-    
+
     if tavily_response.results.is_empty() {
         formatted_results.push_str("No results found for this query.\n");
     }
-    
+
     Ok(formatted_results)
 }
 
@@ -221,26 +221,30 @@ async fn chat_handler(
     State(state): State<AppState>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let session_id = request.session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let session_id = request
+        .session_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let agent_type = request.agent_type.as_deref().unwrap_or("research");
-    
+
     // Get or create session
     {
         let mut sessions = state.sessions.write().await;
-        sessions.entry(session_id.clone()).or_insert_with(|| SessionInfo {
-            id: session_id.clone(),
-            created_at: Utc::now(),
-            last_activity: Utc::now(),
-            message_count: 0,
-            agent_type: agent_type.to_string(),
-        });
-        
+        sessions
+            .entry(session_id.clone())
+            .or_insert_with(|| SessionInfo {
+                id: session_id.clone(),
+                created_at: Utc::now(),
+                last_activity: Utc::now(),
+                message_count: 0,
+                agent_type: agent_type.to_string(),
+            });
+
         if let Some(session) = sessions.get_mut(&session_id) {
             session.last_activity = Utc::now();
             session.message_count += 1;
         }
     }
-    
+
     // Get the appropriate agent
     let agent = state.agents.get(agent_type).ok_or_else(|| {
         (
@@ -252,41 +256,46 @@ async fn chat_handler(
             }),
         )
     })?;
-    
+
     // Update agent status to "thinking"
     {
         let mut status_map = state.agent_status.write().await;
-        status_map.insert(session_id.clone(), AgentStatus {
-            session_id: session_id.clone(),
-            current_task: Some(request.message.clone()),
-            status: "thinking".to_string(),
-            todos: vec![], // TODO: Extract from agent state
-            recent_actions: vec![
-                AgentAction {
+        status_map.insert(
+            session_id.clone(),
+            AgentStatus {
+                session_id: session_id.clone(),
+                current_task: Some(request.message.clone()),
+                status: "thinking".to_string(),
+                todos: vec![], // TODO: Extract from agent state
+                recent_actions: vec![AgentAction {
                     timestamp: Utc::now(),
                     action_type: "user_message".to_string(),
                     description: "Received user message".to_string(),
                     details: Some(request.message.clone()),
-                }
-            ],
-            active_subagent: None,
-        });
+                }],
+                active_subagent: None,
+            },
+        );
     }
-    
+
     // Process the message
     let user_message = agents_core::messaging::AgentMessage {
         role: agents_core::messaging::MessageRole::User,
         content: agents_core::messaging::MessageContent::Text(request.message.clone()),
         metadata: None,
     };
-    
-    match agent.handle_message(
-        user_message,
-        Arc::new(AgentStateSnapshot::default()),
-    ).await {
+
+    match agent
+        .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
+        .await
+    {
         Ok(response) => {
-            let response_text = response.content.as_text().unwrap_or("No response").to_string();
-            
+            let response_text = response
+                .content
+                .as_text()
+                .unwrap_or("No response")
+                .to_string();
+
             // Update agent status to "idle"
             {
                 let mut status_map = state.agent_status.write().await;
@@ -301,18 +310,18 @@ async fn chat_handler(
                     });
                 }
             }
-            
+
             Ok(Json(ChatResponse {
                 response: response_text,
                 session_id,
                 timestamp: Utc::now(),
                 files_created: None, // TODO: Track file operations
-                tools_used: None,   // TODO: Track tool usage
+                tools_used: None,    // TODO: Track tool usage
             }))
         }
         Err(e) => {
             tracing::error!("Agent processing failed: {:?}", e);
-            
+
             // Update agent status to error
             {
                 let mut status_map = state.agent_status.write().await;
@@ -327,7 +336,7 @@ async fn chat_handler(
                     });
                 }
             }
-            
+
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -345,7 +354,7 @@ async fn get_session_handler(
     Path(session_id): Path<String>,
 ) -> Result<Json<SessionInfo>, (StatusCode, Json<ErrorResponse>)> {
     let sessions = state.sessions.read().await;
-    
+
     match sessions.get(&session_id) {
         Some(session) => Ok(Json(session.clone())),
         None => Err((
@@ -359,9 +368,7 @@ async fn get_session_handler(
     }
 }
 
-async fn list_sessions_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<SessionInfo>> {
+async fn list_sessions_handler(State(state): State<AppState>) -> Json<Vec<SessionInfo>> {
     let sessions = state.sessions.read().await;
     Json(sessions.values().cloned().collect())
 }
@@ -369,7 +376,7 @@ async fn list_sessions_handler(
 async fn health_handler(State(state): State<AppState>) -> Json<HealthResponse> {
     let uptime = Utc::now().signed_duration_since(state.start_time);
     let sessions = state.sessions.read().await;
-    
+
     Json(HealthResponse {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -379,25 +386,21 @@ async fn health_handler(State(state): State<AppState>) -> Json<HealthResponse> {
 }
 
 async fn agents_info_handler(State(_state): State<AppState>) -> Json<Vec<AgentInfo>> {
-    let agents = vec![
-        AgentInfo {
-            name: "research".to_string(),
-            description: "Deep research agent with specialized subagents for comprehensive analysis".to_string(),
-            tools: vec![
-                "write_file".to_string(),
-                "read_file".to_string(),
-                "edit_file".to_string(),
-                "ls".to_string(),
-                "write_todos".to_string(),
-                "task".to_string(),
-            ],
-            subagents: vec![
-                "research-agent".to_string(),
-                "critique-agent".to_string(),
-            ],
-        },
-    ];
-    
+    let agents = vec![AgentInfo {
+        name: "research".to_string(),
+        description: "Deep research agent with specialized subagents for comprehensive analysis"
+            .to_string(),
+        tools: vec![
+            "write_file".to_string(),
+            "read_file".to_string(),
+            "edit_file".to_string(),
+            "ls".to_string(),
+            "write_todos".to_string(),
+            "task".to_string(),
+        ],
+        subagents: vec!["research-agent".to_string(), "critique-agent".to_string()],
+    }];
+
     Json(agents)
 }
 
@@ -406,7 +409,7 @@ async fn get_agent_status_handler(
     Path(session_id): Path<String>,
 ) -> Result<Json<AgentStatus>, (StatusCode, Json<ErrorResponse>)> {
     let status_map = state.agent_status.read().await;
-    
+
     match status_map.get(&session_id) {
         Some(status) => Ok(Json(status.clone())),
         None => {
@@ -424,9 +427,7 @@ async fn get_agent_status_handler(
     }
 }
 
-async fn list_agent_status_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<AgentStatus>> {
+async fn list_agent_status_handler(State(state): State<AppState>) -> Json<Vec<AgentStatus>> {
     let status_map = state.agent_status.read().await;
     Json(status_map.values().cloned().collect())
 }
@@ -437,20 +438,22 @@ async fn create_research_agent() -> anyhow::Result<Arc<dyn agents_core::agent::A
         "internet_search",
         "Search the internet for information using Tavily API",
         |args: serde_json::Value| async move {
-            let query = args.get("query")
+            let query = args
+                .get("query")
                 .and_then(|v| v.as_str())
                 .unwrap_or("default query");
-            
-            let max_results = args.get("max_results")
+
+            let max_results = args
+                .get("max_results")
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32)
                 .unwrap_or(5);
-            
+
             match call_tavily_search(query, Some(max_results)).await {
                 Ok(results) => Ok(results),
-                Err(e) => Ok(format!("❌ Search failed: {}", e))
+                Err(e) => Ok(format!("❌ Search failed: {}", e)),
             }
-        }
+        },
     );
 
     // Create specialized subagents
@@ -478,7 +481,8 @@ If you need additional information for better critique, use internet_search:
 {"tool_calls": [{"name": "internet_search", "args": {"query": "your query", "max_results": 3}}]}
 ```
 
-Provide actionable feedback to improve content quality."#.to_string(),
+Provide actionable feedback to improve content quality."#
+            .to_string(),
         tools: Some(vec![internet_search.clone()]),
         planner: None,
     };
@@ -496,12 +500,13 @@ Examples:
     // Create OpenAI configuration
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?;
-    
-    println!("🔑 Using OpenAI API key: {}...{}", 
+
+    println!(
+        "🔑 Using OpenAI API key: {}...{}",
         &api_key[..std::cmp::min(8, api_key.len())],
         &api_key[api_key.len().saturating_sub(4)..]
     );
-    
+
     let openai_config = OpenAiConfig::new(api_key, "gpt-4o-mini");
 
     // Create checkpointer
@@ -520,7 +525,7 @@ Examples:
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    
+
     // Initialize tracing
     if cli.verbose {
         tracing_subscriber::fmt()
@@ -532,7 +537,7 @@ async fn main() -> anyhow::Result<()> {
             .with_max_level(tracing::Level::INFO)
             .init();
     }
-    
+
     dotenv::dotenv().ok();
 
     println!("🚀 Deep Agent HTTP Server");
@@ -541,7 +546,7 @@ async fn main() -> anyhow::Result<()> {
     // Create agents
     println!("🤖 Initializing Deep Research Agent...");
     let research_agent = create_research_agent().await?;
-    
+
     let mut agents = HashMap::new();
     agents.insert("research".to_string(), research_agent);
 
@@ -568,7 +573,7 @@ async fn main() -> anyhow::Result<()> {
 
     let bind_addr = format!("{}:{}", cli.host, cli.port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
-    
+
     println!("✅ Server ready!");
     println!("🌐 Listening on: http://{}", bind_addr);
     println!("📚 API Documentation:");

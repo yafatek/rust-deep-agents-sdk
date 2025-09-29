@@ -75,14 +75,14 @@ fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
         role: "system",
         content: request.system_prompt.clone(),
     });
-    
+
     // Filter and validate message sequence for OpenAI compatibility
     let mut last_was_tool_call = false;
-    
+
     for msg in &request.messages {
         let role = match msg.role {
             MessageRole::User => "user",
-            MessageRole::Agent => "assistant", 
+            MessageRole::Agent => "assistant",
             MessageRole::Tool => {
                 // Only include tool messages if they follow a tool call
                 if !last_was_tool_call {
@@ -90,19 +90,19 @@ fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
                     continue;
                 }
                 "tool"
-            },
+            }
             MessageRole::System => "system",
         };
-        
+
         let content = match &msg.content {
             MessageContent::Text(text) => text.clone(),
             MessageContent::Json(value) => value.to_string(),
         };
-        
+
         // Check if this assistant message contains tool calls
-        last_was_tool_call = matches!(msg.role, MessageRole::Agent) && 
-            content.contains("tool_calls");
-        
+        last_was_tool_call =
+            matches!(msg.role, MessageRole::Agent) && content.contains("tool_calls");
+
         messages.push(OpenAiMessage { role, content });
     }
     messages
@@ -123,9 +123,18 @@ impl LanguageModel for OpenAiChatModel {
             .unwrap_or("https://api.openai.com/v1/chat/completions");
 
         // Debug logging
-        tracing::debug!("OpenAI request: model={}, messages={}", self.config.model, messages.len());
+        tracing::debug!(
+            "OpenAI request: model={}, messages={}",
+            self.config.model,
+            messages.len()
+        );
         for (i, msg) in messages.iter().enumerate() {
-            tracing::debug!("Message {}: role={}, content_len={}", i, msg.role, msg.content.len());
+            tracing::debug!(
+                "Message {}: role={}, content_len={}",
+                i,
+                msg.role,
+                msg.content.len()
+            );
             if msg.content.len() < 500 {
                 tracing::debug!("Message {} content: {}", i, msg.content);
             }
@@ -143,7 +152,11 @@ impl LanguageModel for OpenAiChatModel {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             tracing::error!("OpenAI API error: status={}, body={}", status, error_text);
-            return Err(anyhow::anyhow!("OpenAI API error: {} - {}", status, error_text));
+            return Err(anyhow::anyhow!(
+                "OpenAI API error: {} - {}",
+                status,
+                error_text
+            ));
         }
 
         let data: ChatResponse = response.json().await?;

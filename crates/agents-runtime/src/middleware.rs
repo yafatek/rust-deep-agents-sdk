@@ -356,7 +356,7 @@ impl AnthropicPromptCachingMiddleware {
         }
     }
 
-    pub fn default() -> Self {
+    pub fn with_defaults() -> Self {
         Self::new("5m", "ignore")
     }
 
