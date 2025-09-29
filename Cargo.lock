@@ -59,6 +59,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "agents-sdk"
+version = "0.0.1"
+dependencies = [
+ "agents-aws",
+ "agents-core",
+ "agents-runtime",
+ "agents-toolkit",
+ "anyhow",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "agents-toolkit"
 version = "0.0.1"
 dependencies = [
@@ -1901,6 +1914,16 @@ name = "unicode-ident"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
+
+[[package]]
+name = "unified-sdk-test"
+version = "0.1.0"
+dependencies = [
+ "agents-sdk",
+ "anyhow",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "untrusted"

@@ -1,18 +1,18 @@
 //! Helper functions for creating user tools from regular Rust functions
-//! 
+//!
 //! This module provides utilities to convert regular Rust functions into ToolHandle
 //! implementations for the `tools` parameter in create_deep_agent(), making it easier
 //! to create custom tools while keeping all existing built-in tools unchanged.
 
-use std::sync::Arc;
 use agents_core::agent::{ToolHandle, ToolResponse};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole, ToolInvocation};
 use async_trait::async_trait;
 use serde_json::Value;
+use std::sync::Arc;
 
 pub fn create_tool<F, Fut>(
     name: &'static str,
-    description: &'static str,
+    _description: &'static str,
     handler: F,
 ) -> Arc<dyn ToolHandle>
 where
@@ -27,7 +27,6 @@ where
 }
 
 /// Create a tool from a synchronous function
-
 pub fn create_sync_tool<F>(
     name: &'static str,
     // description: &'static str,
@@ -43,11 +42,21 @@ where
     })
 }
 
+// Type alias to simplify complex async handler type
+type AsyncHandler = Box<
+    dyn Fn(
+            Value,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
+        + Send
+        + Sync,
+>;
+
 // Internal implementation for async tools
 struct FunctionTool {
     name: &'static str,
     // description: &'static str,
-    handler: Box<dyn Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>> + Send + Sync>,
+    handler: AsyncHandler,
 }
 
 #[async_trait]
@@ -58,14 +67,16 @@ impl ToolHandle for FunctionTool {
 
     async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
         let result = (self.handler)(invocation.args).await?;
-        
+
         Ok(ToolResponse::Message(AgentMessage {
             role: MessageRole::Tool,
             content: MessageContent::Text(result),
-            metadata: invocation.tool_call_id.map(|id| agents_core::messaging::MessageMetadata {
-                tool_call_id: Some(id),
-                cache_control: None,
-            }),
+            metadata: invocation
+                .tool_call_id
+                .map(|id| agents_core::messaging::MessageMetadata {
+                    tool_call_id: Some(id),
+                    cache_control: None,
+                }),
         }))
     }
 }
@@ -85,14 +96,16 @@ impl ToolHandle for SyncFunctionTool {
 
     async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
         let result = (self.handler)(invocation.args)?;
-        
+
         Ok(ToolResponse::Message(AgentMessage {
             role: MessageRole::Tool,
             content: MessageContent::Text(result),
-            metadata: invocation.tool_call_id.map(|id| agents_core::messaging::MessageMetadata {
-                tool_call_id: Some(id),
-                cache_control: None,
-            }),
+            metadata: invocation
+                .tool_call_id
+                .map(|id| agents_core::messaging::MessageMetadata {
+                    tool_call_id: Some(id),
+                    cache_control: None,
+                }),
         }))
     }
 }
@@ -114,7 +127,7 @@ macro_rules! tool_fn {
                     .try_into()
                     .map_err(|_| anyhow::anyhow!("Invalid type for parameter: {}", stringify!($param)))?;
             )*
-            
+
             // Call the user's function
             $body.await
         })

@@ -2,18 +2,18 @@
 //! Includes filesystem manipulation tools, todo list management, and planning scaffolds.
 
 pub mod filesystem;
-pub mod tools;
 pub mod todos;
+pub mod tools;
 
 // Re-export helper functions for creating user tools (enhances existing system)
-pub use tools::{create_tool, create_sync_tool};
+pub use tools::{create_sync_tool, create_tool};
 
-pub use filesystem::{EditFileTool, LsTool, ReadFileTool, WriteFileTool};
-pub use todos::WriteTodosTool;
 use agents_core::agent::ToolResponse;
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
+pub use filesystem::{EditFileTool, LsTool, ReadFileTool, WriteFileTool};
+pub use todos::WriteTodosTool;
 
 pub(crate) fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
     invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
