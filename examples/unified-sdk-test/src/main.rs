@@ -1,6 +1,4 @@
-use agents_sdk::{
-    get_default_model, state::AgentStateSnapshot, tool, ConfigurableAgentBuilder,
-};
+use agents_sdk::{get_default_model, state::AgentStateSnapshot, tool, ConfigurableAgentBuilder};
 use std::sync::Arc;
 
 // Define a tool using the #[tool] macro - clean and simple!

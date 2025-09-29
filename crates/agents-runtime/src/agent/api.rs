@@ -17,7 +17,8 @@ use std::sync::Arc;
 /// Cost comparison:
 /// - GPT-4o-mini: $0.15/1M input tokens, $0.60/1M output tokens
 /// - Claude Sonnet 4: $3.00/1M input tokens, $15.00/1M output tokens
-/// = ~95% cost savings!
+///
+///   = ~95% cost savings!
 pub fn get_default_model() -> anyhow::Result<Arc<dyn LanguageModel>> {
     let config = OpenAiConfig {
         api_key: std::env::var("OPENAI_API_KEY")

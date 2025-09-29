@@ -74,7 +74,10 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     // Generate the tool wrapper
-    let tool_struct_name = syn::Ident::new(&format!("{}Tool", to_pascal_case(&fn_name_str)), fn_name.span());
+    let tool_struct_name = syn::Ident::new(
+        &format!("{}Tool", to_pascal_case(&fn_name_str)),
+        fn_name.span(),
+    );
 
     let execute_body = if is_async {
         quote! {

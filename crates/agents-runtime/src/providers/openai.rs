@@ -273,16 +273,16 @@ impl LanguageModel for OpenAiChatModel {
                     // Split on double newline to get complete SSE messages
                     let parts: Vec<&str> = buf.split("\n\n").collect();
                     let complete_messages = if parts.len() > 1 {
-                        &parts[..parts.len() - 1]  // All but last (potentially incomplete)
+                        &parts[..parts.len() - 1] // All but last (potentially incomplete)
                     } else {
-                        &[]  // No complete messages yet
+                        &[] // No complete messages yet
                     };
 
                     // Process each complete SSE message
                     for msg in complete_messages {
                         for line in msg.lines() {
-                            if line.starts_with("data: ") {
-                                let json_str = line[6..].trim();
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                let json_str = data.trim();
 
                                 // Check for [DONE] marker
                                 if json_str == "[DONE]" {
@@ -320,7 +320,7 @@ impl LanguageModel for OpenAiChatModel {
                     }
 
                     // Clear processed messages from buffer, keep only incomplete part
-                    if complete_messages.len() > 0 {
+                    if !complete_messages.is_empty() {
                         *buf = parts.last().unwrap_or(&"").to_string();
                     }
 
@@ -357,7 +357,9 @@ impl LanguageModel for OpenAiChatModel {
                                 metadata: None,
                             };
                             *is_done.lock().unwrap() = true;
-                            return Ok(StreamChunk::Done { message: final_message });
+                            return Ok(StreamChunk::Done {
+                                message: final_message,
+                            });
                         }
                     }
                     Err(anyhow::anyhow!("Stream error: {}", e))
@@ -380,7 +382,10 @@ impl LanguageModel for OpenAiChatModel {
                         MessageContent::Text(t) => t.as_str(),
                         _ => "non-text",
                     };
-                    tracing::debug!("Stream ended naturally, sending final Done chunk with {} chars", content_text.len());
+                    tracing::debug!(
+                        "Stream ended naturally, sending final Done chunk with {} chars",
+                        content_text.len()
+                    );
                     return Ok(StreamChunk::Done {
                         message: final_message,
                     });

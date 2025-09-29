@@ -69,11 +69,7 @@ impl ToolBuilder {
             self.name,
             self.description,
             self.parameters.unwrap_or_else(|| {
-                ToolParameterSchema::object(
-                    "No parameters",
-                    Default::default(),
-                    Vec::new(),
-                )
+                ToolParameterSchema::object("No parameters", Default::default(), Vec::new())
             }),
         );
 
@@ -142,11 +138,7 @@ where
     let description_str = description.into();
 
     // Create a simple schema that accepts any parameters
-    let parameters = ToolParameterSchema::object(
-        "Tool parameters",
-        Default::default(),
-        Vec::new(),
-    );
+    let parameters = ToolParameterSchema::object("Tool parameters", Default::default(), Vec::new());
 
     let handler = Arc::new(handler);
 
@@ -172,9 +164,12 @@ mod tests {
         let tool = ToolBuilder::new("echo", "Echoes input")
             .with_parameters(ToolParameterSchema::object(
                 "Echo parameters",
-                [("message".to_string(), ToolParameterSchema::string("Message to echo"))]
-                    .into_iter()
-                    .collect(),
+                [(
+                    "message".to_string(),
+                    ToolParameterSchema::string("Message to echo"),
+                )]
+                .into_iter()
+                .collect(),
                 vec!["message".to_string()],
             ))
             .build_async(|args, ctx| async move {
@@ -209,7 +204,10 @@ mod tests {
                 "Add parameters",
                 [
                     ("a".to_string(), ToolParameterSchema::number("First number")),
-                    ("b".to_string(), ToolParameterSchema::number("Second number")),
+                    (
+                        "b".to_string(),
+                        ToolParameterSchema::number("Second number"),
+                    ),
                 ]
                 .into_iter()
                 .collect(),

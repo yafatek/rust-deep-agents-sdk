@@ -2,29 +2,24 @@ use agents_sdk::{
     agent::AgentHandle,
     llm::StreamChunk,
     messaging::{AgentMessage, MessageContent, MessageRole},
-    persistence::{Checkpointer, InMemoryCheckpointer, ThreadId},
+    persistence::{Checkpointer, InMemoryCheckpointer},
     state::AgentStateSnapshot,
     tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
     SummarizationConfig,
 };
 use axum::{
     extract::{Query, State as AxumState},
-    http::{header, Method, StatusCode},
+    http::Method,
     response::{
         sse::{Event, Sse},
         IntoResponse, Json,
     },
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use futures::{stream::Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    convert::Infallible,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use uuid::Uuid;
@@ -90,9 +85,9 @@ struct Notification {
 #[tool("Diagnoses car issues based on symptoms and provides recommendations")]
 fn diagnose_car_issue(
     symptoms: String,
-    vehicle_make: String,
-    vehicle_model: String,
-    year: i32,
+    _vehicle_make: String,
+    _vehicle_model: String,
+    _year: i32,
     mileage_km: i32,
 ) -> String {
     let diagnostic = DiagnosticResult {
@@ -106,7 +101,11 @@ fn diagnose_car_issue(
         },
         recommended_service: format!(
             "Recommended: Full inspection + {} service",
-            if mileage_km > 100000 { "major" } else { "minor" }
+            if mileage_km > 100000 {
+                "major"
+            } else {
+                "minor"
+            }
         ),
         estimated_cost_aed: if symptoms.to_lowercase().contains("engine") {
             2500.0
@@ -167,7 +166,9 @@ fn create_support_ticket(
         issue_description,
         priority,
         status: "Open".to_string(),
-        created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        created_at: chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string(),
     };
     serde_json::to_string_pretty(&ticket).unwrap()
 }
@@ -243,7 +244,9 @@ fn send_notification(recipient: String, channel: String, message: String) -> Str
         recipient,
         channel,
         message,
-        sent_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        sent_at: chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string(),
         status: "Sent".to_string(),
     };
     serde_json::to_string_pretty(&notification).unwrap()
@@ -280,16 +283,18 @@ fn analyze_feedback_trends(period: String) -> String {
 #[derive(Clone)]
 struct AppState {
     agent: Arc<dyn AgentHandle>,
-    checkpointer: Arc<dyn Checkpointer>,
+    _checkpointer: Arc<dyn Checkpointer>,
     sessions: Arc<RwLock<HashMap<String, Vec<AgentMessage>>>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
     message: String,
     session_id: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct ChatResponse {
     session_id: String,
@@ -534,7 +539,7 @@ async fn main() -> anyhow::Result<()> {
     // Create app state
     let state = AppState {
         agent,
-        checkpointer,
+        _checkpointer: checkpointer,
         sessions: Arc::new(RwLock::new(HashMap::new())),
     };
 

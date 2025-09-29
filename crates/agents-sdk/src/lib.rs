@@ -11,11 +11,12 @@
 //! ```
 //!
 //! ```rust,no_run
+//! # #[cfg(feature = "toolkit")]
+//! # {
 //! use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
 //! use serde_json::Value;
 //!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
+//! # async fn example() -> anyhow::Result<()> {
 //!     // Create a simple tool
 //!     let my_tool = create_tool(
 //!         "greet",
@@ -28,7 +29,7 @@
 //!         }
 //!     );
 //!
-//!     // Build an agent with the default Claude model
+//!     // Build an agent with the default model
 //!     let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
 //!         .with_model(get_default_model()?)
 //!         .with_tool(my_tool)
@@ -43,9 +44,9 @@
 //!         Arc::new(AgentStateSnapshot::default())
 //!     ).await?;
 //!     println!("{:?}", response);
-//!
-//!     Ok(())
-//! }
+//! # Ok(())
+//! # }
+//! # }
 //! ```
 //!
 //! ## Features
@@ -149,16 +150,27 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // Re-export core functionality (always available)
-pub use agents_core::{agent, hitl, llm, messaging, persistence, state, tools};
 pub use agents_core::agent::{AgentHandle, AgentStream};
-pub use agents_core::llm::{StreamChunk, ChunkStream};
-pub use agents_core::tools::{Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema};
+pub use agents_core::llm::{ChunkStream, StreamChunk};
+pub use agents_core::tools::{
+    Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
+};
+pub use agents_core::{agent, hitl, llm, messaging, persistence, state, tools};
 pub use agents_runtime::{
-    create_async_deep_agent, create_deep_agent, get_default_model, ConfigurableAgentBuilder,
-    DeepAgent, SubAgentConfig, SummarizationConfig,
+    create_async_deep_agent,
+    create_deep_agent,
+    get_default_model,
     // Provider configurations and models
-    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
+    AnthropicConfig,
+    AnthropicMessagesModel,
+    ConfigurableAgentBuilder,
+    DeepAgent,
+    GeminiChatModel,
+    GeminiConfig,
+    OpenAiChatModel,
     OpenAiConfig,
+    SubAgentConfig,
+    SummarizationConfig,
 };
 
 // Re-export toolkit functionality (when toolkit feature is enabled)
