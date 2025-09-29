@@ -26,6 +26,7 @@ use std::time::Duration;
 ///
 /// ```rust,no_run
 /// use agents_persistence::RedisCheckpointer;
+/// use std::time::Duration;
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {

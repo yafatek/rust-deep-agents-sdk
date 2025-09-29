@@ -2,19 +2,19 @@ use agents_sdk::{
     agent::AgentHandle,
     llm::StreamChunk,
     messaging::{AgentMessage, MessageContent, MessageRole},
-    persistence::{Checkpointer, InMemoryCheckpointer, ThreadId},
+    persistence::{Checkpointer, InMemoryCheckpointer},
     state::AgentStateSnapshot,
     tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
     SummarizationConfig,
 };
 use axum::{
     extract::{Query, State as AxumState},
-    http::{header, Method, StatusCode},
+    http::Method,
     response::{
         sse::{Event, Sse},
         IntoResponse, Json,
     },
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use futures::{stream::Stream, StreamExt};
@@ -90,9 +90,9 @@ struct Notification {
 #[tool("Diagnoses car issues based on symptoms and provides recommendations")]
 fn diagnose_car_issue(
     symptoms: String,
-    vehicle_make: String,
-    vehicle_model: String,
-    year: i32,
+    _vehicle_make: String,
+    _vehicle_model: String,
+    _year: i32,
     mileage_km: i32,
 ) -> String {
     let diagnostic = DiagnosticResult {
@@ -280,16 +280,18 @@ fn analyze_feedback_trends(period: String) -> String {
 #[derive(Clone)]
 struct AppState {
     agent: Arc<dyn AgentHandle>,
-    checkpointer: Arc<dyn Checkpointer>,
+    _checkpointer: Arc<dyn Checkpointer>,
     sessions: Arc<RwLock<HashMap<String, Vec<AgentMessage>>>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
     message: String,
     session_id: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct ChatResponse {
     session_id: String,
@@ -534,7 +536,7 @@ async fn main() -> anyhow::Result<()> {
     // Create app state
     let state = AppState {
         agent,
-        checkpointer,
+        _checkpointer: checkpointer,
         sessions: Arc::new(RwLock::new(HashMap::new())),
     };
 

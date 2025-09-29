@@ -14,10 +14,10 @@ use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
-use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
+use agents_core::tools::{ToolBox, ToolContext, ToolResult};
 use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+    AgentMessage, MessageContent, MessageMetadata, MessageRole,
 };
 use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
@@ -153,7 +153,7 @@ impl DeepAgent {
     async fn execute_tool(
         &self,
         tool: ToolBox,
-        tool_name: String,
+        _tool_name: String,
         payload: Value,
     ) -> anyhow::Result<AgentMessage> {
         let state_snapshot = self.state.read().unwrap().clone();

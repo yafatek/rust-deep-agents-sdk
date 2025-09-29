@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use agents_core::agent::AgentHandle;
 use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::messaging::{
-    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole,
 };
 use agents_core::prompts::{
     BASE_AGENT_PROMPT, FILESYSTEM_SYSTEM_PROMPT, TASK_SYSTEM_PROMPT, TASK_TOOL_DESCRIPTION,
@@ -116,12 +116,12 @@ impl AgentMiddleware for SummarizationMiddleware {
 }
 
 pub struct PlanningMiddleware {
-    state: Arc<RwLock<AgentStateSnapshot>>,
+    _state: Arc<RwLock<AgentStateSnapshot>>,
 }
 
 impl PlanningMiddleware {
     pub fn new(state: Arc<RwLock<AgentStateSnapshot>>) -> Self {
-        Self { state }
+        Self { _state: state }
     }
 }
 
@@ -142,12 +142,12 @@ impl AgentMiddleware for PlanningMiddleware {
 }
 
 pub struct FilesystemMiddleware {
-    state: Arc<RwLock<AgentStateSnapshot>>,
+    _state: Arc<RwLock<AgentStateSnapshot>>,
 }
 
 impl FilesystemMiddleware {
     pub fn new(state: Arc<RwLock<AgentStateSnapshot>>) -> Self {
-        Self { state }
+        Self { _state: state }
     }
 }
 

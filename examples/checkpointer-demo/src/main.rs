@@ -17,7 +17,6 @@
 //! cargo run --example checkpointer-demo --features dynamodb -- --backend dynamodb
 //! ```
 
-use agents_core::agent::AgentHandle;
 use agents_core::persistence::{Checkpointer, InMemoryCheckpointer};
 use agents_core::state::AgentStateSnapshot;
 use agents_runtime::{ConfigurableAgentBuilder, OpenAiConfig};
