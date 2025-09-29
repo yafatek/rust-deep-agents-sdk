@@ -11,11 +11,12 @@
 //! ```
 //!
 //! ```rust,no_run
+//! # #[cfg(feature = "toolkit")]
+//! # {
 //! use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
 //! use serde_json::Value;
 //!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
+//! # async fn example() -> anyhow::Result<()> {
 //!     // Create a simple tool
 //!     let my_tool = create_tool(
 //!         "greet",
@@ -28,7 +29,7 @@
 //!         }
 //!     );
 //!
-//!     // Build an agent with the default Claude model
+//!     // Build an agent with the default model
 //!     let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
 //!         .with_model(get_default_model()?)
 //!         .with_tool(my_tool)
@@ -43,9 +44,9 @@
 //!         Arc::new(AgentStateSnapshot::default())
 //!     ).await?;
 //!     println!("{:?}", response);
-//!
-//!     Ok(())
-//! }
+//! # Ok(())
+//! # }
+//! # }
 //! ```
 //!
 //! ## Features

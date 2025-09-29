@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::command::Command;
 use crate::llm::StreamChunk;
 use crate::messaging::AgentMessage;
 use crate::state::AgentStateSnapshot;

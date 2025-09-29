@@ -111,7 +111,7 @@ fn diagnose_car_issue(
 #[tool("Calculates service cost based on vehicle and service type")]
 fn calculate_service_cost(
     vehicle_make: String,
-    vehicle_model: String,
+    _vehicle_model: String,
     service_type: String,
     year: i32,
 ) -> String {
@@ -246,7 +246,7 @@ fn book_appointment(
 
 #[tool("Generates a secure payment link for the customer")]
 fn generate_payment_link(
-    customer_name: String,
+    _customer_name: String,
     amount_aed: f64,
     description: String,
 ) -> String {

@@ -35,7 +35,7 @@ use agents_core::state::AgentStateSnapshot;
 use anyhow::Context;
 use async_trait::async_trait;
 use aws_sdk_dynamodb::{
-    types::{AttributeValue, KeysAndAttributes},
+    types::AttributeValue,
     Client,
 };
 use std::collections::HashMap;
@@ -47,6 +47,7 @@ use std::time::Duration;
 ///
 /// ```rust,no_run
 /// use agents_aws::DynamoDbCheckpointer;
+/// use std::time::Duration;
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
@@ -299,7 +300,7 @@ impl DynamoDbCheckpointerBuilder {
         let client = match self.client {
             Some(client) => client,
             None => {
-                let config = aws_config::load_from_env().await;
+                let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
                 Client::new(&config)
             }
         };

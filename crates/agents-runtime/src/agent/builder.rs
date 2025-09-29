@@ -15,7 +15,7 @@ use crate::providers::{
 use agents_core::agent::PlannerHandle;
 use agents_core::llm::LanguageModel;
 use agents_core::persistence::Checkpointer;
-use agents_core::tools::{Tool, ToolBox};
+use agents_core::tools::ToolBox;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

@@ -3,8 +3,8 @@
 //! This module contains all the configuration structures used to build Deep Agents,
 //! including parameter structs that mirror the Python SDK API.
 
-use crate::middleware::{AgentMiddleware, HitlPolicy, SubAgentDescriptor, SubAgentRegistration};
-use agents_core::agent::{AgentHandle, PlannerHandle};
+use crate::middleware::{AgentMiddleware, HitlPolicy};
+use agents_core::agent::PlannerHandle;
 use agents_core::tools::ToolBox;
 use agents_core::persistence::Checkpointer;
 use std::collections::{HashMap, HashSet};
