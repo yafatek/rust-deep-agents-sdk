@@ -1,0 +1,23 @@
+[package]
+name = "agents-macros"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+description = "Procedural macros for Rust Deep Agents SDK"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+serde_json = "1.0"
+
+[dev-dependencies]
+agents-core = { path = "../agents-core" }
+agents-toolkit = { path = "../agents-toolkit" }
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+anyhow = "1.0"

@@ -10,11 +10,15 @@ pub mod messaging;
 pub mod persistence;
 pub mod prompts;
 pub mod state;
+pub mod tools;
 
-pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle, ToolHandle, ToolResponse};
+pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle};
 pub use command::{Command, StateDiff};
 pub use hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 pub use messaging::{
     AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
 pub use persistence::{Checkpointer, CheckpointerConfig, InMemoryCheckpointer, ThreadId};
+pub use tools::{
+    Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
+};
