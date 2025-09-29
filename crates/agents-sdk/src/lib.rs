@@ -78,13 +78,20 @@ pub use agents_core::{agent, hitl, llm, messaging, persistence, state, tools};
 pub use agents_core::tools::{Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema};
 pub use agents_runtime::{
     create_async_deep_agent, create_deep_agent, get_default_model, ConfigurableAgentBuilder,
-    DeepAgent,
+    DeepAgent, SubAgentConfig, SummarizationConfig,
+    // Provider configurations and models
+    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
+    OpenAiConfig,
 };
 
 // Re-export toolkit functionality (when toolkit feature is enabled)
 #[cfg(feature = "toolkit")]
 #[cfg_attr(docsrs, doc(cfg(feature = "toolkit")))]
 pub use agents_toolkit::*;
+
+// Re-export procedural macros from toolkit
+#[cfg(feature = "toolkit")]
+pub use agents_macros::tool;
 
 // Re-export AWS functionality (when aws feature is enabled)
 #[cfg(feature = "aws")]
@@ -115,4 +122,4 @@ pub mod prelude {
 // Convenience re-exports for the most commonly used items already handled above
 
 #[cfg(feature = "toolkit")]
-pub use agents_toolkit::{tool, tool_sync, ToolBuilder};
+pub use agents_toolkit::{tool_sync, ToolBuilder};

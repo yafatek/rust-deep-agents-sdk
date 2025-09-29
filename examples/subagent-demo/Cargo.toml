@@ -1,10 +1,9 @@
 [package]
-name = "unified-sdk-test"
+name = "subagent-demo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Test the unified SDK
 agents-sdk = { path = "../../crates/agents-sdk", features = ["full"] }
 agents-core = { path = "../../crates/agents-core" }
 async-trait = { workspace = true }

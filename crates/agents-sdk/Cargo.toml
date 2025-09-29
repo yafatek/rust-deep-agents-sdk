@@ -18,6 +18,7 @@ agents-runtime = { version = "0.0.1", path = "../agents-runtime" }
 
 # Optional dependencies controlled by features
 agents-toolkit = { version = "0.0.1", path = "../agents-toolkit", optional = true }
+agents-macros = { version = "0.1.0", path = "../agents-macros", optional = true }
 agents-aws = { version = "0.0.1", path = "../agents-aws", optional = true }
 
 [features]
@@ -25,7 +26,7 @@ agents-aws = { version = "0.0.1", path = "../agents-aws", optional = true }
 default = ["toolkit"]
 
 # Individual feature flags
-toolkit = ["dep:agents-toolkit"]
+toolkit = ["dep:agents-toolkit", "dep:agents-macros"]
 aws = ["dep:agents-aws"]
 
 # Convenience feature for everything

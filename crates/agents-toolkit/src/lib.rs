@@ -4,6 +4,7 @@
 //! - Built-in tools (filesystem, todos, etc.)
 //! - Tool builder utilities for creating custom tools
 //! - Tool registration and management helpers
+//! - Procedural macros for automatic tool schema generation
 
 pub mod builder;
 pub mod builtin;
@@ -14,7 +15,10 @@ pub use agents_core::tools::{
 };
 
 // Re-export builder utilities
-pub use builder::{tool, tool_sync, ToolBuilder};
+pub use builder::{create_tool, tool, tool_sync, ToolBuilder};
+
+// Re-export procedural macros
+pub use agents_macros::tool;
 
 // Re-export built-in tools
 pub use builtin::{

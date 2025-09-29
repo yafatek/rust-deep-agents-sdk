@@ -118,15 +118,17 @@ cargo run
 Most examples require API keys:
 
 ```bash
-# For Anthropic (default model)
-export ANTHROPIC_API_KEY="your-anthropic-key"
-
-# For OpenAI (alternative)
+# For OpenAI (default model - GPT-4o-mini)
 export OPENAI_API_KEY="your-openai-key"
+
+# For Anthropic (alternative - Claude)
+export ANTHROPIC_API_KEY="your-anthropic-key"
 
 # For Gemini (alternative)
 export GEMINI_API_KEY="your-gemini-key"
 ```
+
+**Note**: The default model is now OpenAI GPT-4o-mini for cost-effective operation (~95% cheaper than Claude Sonnet 4). You can override this with `.with_model()` in your code.
 
 ## Built-in Tools
 
