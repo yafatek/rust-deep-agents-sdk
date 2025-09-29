@@ -74,7 +74,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // Re-export core functionality (always available)
-pub use agents_core::{agent, hitl, llm, messaging, persistence, state};
+pub use agents_core::{agent, hitl, llm, messaging, persistence, state, tools};
+pub use agents_core::tools::{Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema};
 pub use agents_runtime::{
     create_async_deep_agent, create_deep_agent, get_default_model, ConfigurableAgentBuilder,
     DeepAgent,
@@ -98,7 +99,7 @@ pub use agents_aws::*;
 pub mod prelude {
 
     // Core types
-    pub use agents_core::agent::{AgentHandle, PlannerHandle, ToolHandle, ToolResponse};
+    pub use agents_core::agent::{AgentHandle, PlannerHandle};
     pub use agents_core::messaging::{AgentMessage, MessageContent, MessageRole, ToolInvocation};
     pub use agents_core::persistence::{Checkpointer, ThreadId};
     pub use agents_core::state::AgentStateSnapshot;
@@ -108,10 +109,10 @@ pub mod prelude {
 
     // Toolkit utilities (when available)
     #[cfg(feature = "toolkit")]
-    pub use agents_toolkit::{create_sync_tool, create_tool};
+    pub use agents_toolkit::{tool, tool_sync, ToolBuilder};
 }
 
 // Convenience re-exports for the most commonly used items already handled above
 
 #[cfg(feature = "toolkit")]
-pub use agents_toolkit::{create_sync_tool, create_tool};
+pub use agents_toolkit::{tool, tool_sync, ToolBuilder};

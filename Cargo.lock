@@ -1921,6 +1921,7 @@ version = "0.1.0"
 dependencies = [
  "agents-sdk",
  "anyhow",
+ "dotenv",
  "serde_json",
  "tokio",
 ]

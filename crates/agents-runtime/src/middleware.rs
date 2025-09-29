@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use agents_core::agent::{AgentHandle, ToolHandle, ToolResponse};
+use agents_core::agent::AgentHandle;
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::messaging::{
     AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
 };
@@ -10,7 +11,7 @@ use agents_core::prompts::{
     WRITE_TODOS_SYSTEM_PROMPT,
 };
 use agents_core::state::AgentStateSnapshot;
-use agents_toolkit::{EditFileTool, LsTool, ReadFileTool, WriteFileTool, WriteTodosTool};
+use agents_toolkit::{create_filesystem_tools, create_todos_tool};
 use async_trait::async_trait;
 use serde::Deserialize;
 
@@ -62,7 +63,7 @@ pub trait AgentMiddleware: Send + Sync {
     fn id(&self) -> &'static str;
 
     /// Tools to expose when this middleware is active.
-    fn tools(&self) -> Vec<Arc<dyn ToolHandle>> {
+    fn tools(&self) -> Vec<ToolBox> {
         Vec::new()
     }
 
@@ -130,11 +131,8 @@ impl AgentMiddleware for PlanningMiddleware {
         "planning"
     }
 
-    fn tools(&self) -> Vec<Arc<dyn ToolHandle>> {
-        vec![Arc::new(WriteTodosTool {
-            name: "write_todos".into(),
-            state: self.state.clone(),
-        })]
+    fn tools(&self) -> Vec<ToolBox> {
+        vec![create_todos_tool()]
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
@@ -159,25 +157,8 @@ impl AgentMiddleware for FilesystemMiddleware {
         "filesystem"
     }
 
-    fn tools(&self) -> Vec<Arc<dyn ToolHandle>> {
-        vec![
-            Arc::new(LsTool {
-                name: "ls".into(),
-                state: self.state.clone(),
-            }),
-            Arc::new(ReadFileTool {
-                name: "read_file".into(),
-                state: self.state.clone(),
-            }),
-            Arc::new(WriteFileTool {
-                name: "write_file".into(),
-                state: self.state.clone(),
-            }),
-            Arc::new(EditFileTool {
-                name: "edit_file".into(),
-                state: self.state.clone(),
-            }),
-        ]
+    fn tools(&self) -> Vec<ToolBox> {
+        create_filesystem_tools()
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
@@ -215,7 +196,7 @@ impl SubAgentRegistry {
 }
 
 pub struct SubAgentMiddleware {
-    task_tool: Arc<dyn ToolHandle>,
+    task_tool: ToolBox,
     descriptors: Vec<SubAgentDescriptor>,
     _registry: Arc<SubAgentRegistry>,
 }
@@ -224,7 +205,7 @@ impl SubAgentMiddleware {
     pub fn new(registrations: Vec<SubAgentRegistration>) -> Self {
         let descriptors = registrations.iter().map(|r| r.descriptor.clone()).collect();
         let registry = Arc::new(SubAgentRegistry::new(registrations));
-        let task_tool: Arc<dyn ToolHandle> = Arc::new(TaskRouterTool::new(registry.clone()));
+        let task_tool: ToolBox = Arc::new(TaskRouterTool::new(registry.clone()));
         Self {
             task_tool,
             descriptors,
@@ -252,7 +233,7 @@ impl AgentMiddleware for SubAgentMiddleware {
         "subagent"
     }
 
-    fn tools(&self) -> Vec<Arc<dyn ToolHandle>> {
+    fn tools(&self) -> Vec<ToolBox> {
         vec![self.task_tool.clone()]
     }
 
@@ -429,14 +410,36 @@ struct TaskInvocationArgs {
 }
 
 #[async_trait]
-impl ToolHandle for TaskRouterTool {
-    fn name(&self) -> &str {
-        "task"
+impl Tool for TaskRouterTool {
+    fn schema(&self) -> agents_core::tools::ToolSchema {
+        use agents_core::tools::{ToolParameterSchema, ToolSchema};
+        use std::collections::HashMap;
+
+        let mut properties = HashMap::new();
+        properties.insert(
+            "description".to_string(),
+            ToolParameterSchema::string("Description of the task for the subagent"),
+        );
+        properties.insert(
+            "subagent_type".to_string(),
+            ToolParameterSchema::string("Type of subagent to use"),
+        );
+
+        ToolSchema::new(
+            "task",
+            "Delegate a task to a specialized subagent",
+            ToolParameterSchema::object(
+                "Task parameters",
+                properties,
+                vec!["description".to_string(), "subagent_type".to_string()],
+            ),
+        )
     }
 
-    async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse> {
-        let args: TaskInvocationArgs = serde_json::from_value(invocation.args.clone())?;
+    async fn execute(&self, args: serde_json::Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
+        let args: TaskInvocationArgs = serde_json::from_value(args)?;
         let available = self.available_subagents();
+
         if let Some(agent) = self.registry.get(&args.subagent_type) {
             let user_message = AgentMessage {
                 role: MessageRole::User,
@@ -447,28 +450,24 @@ impl ToolHandle for TaskRouterTool {
                 .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
                 .await?;
 
-            return Ok(ToolResponse::Message(AgentMessage {
+            return Ok(ToolResult::Message(AgentMessage {
                 role: MessageRole::Tool,
                 content: response.content,
-                metadata: invocation.tool_call_id.map(|id| MessageMetadata {
+                metadata: ctx.tool_call_id.map(|id| MessageMetadata {
                     tool_call_id: Some(id),
                     cache_control: None,
                 }),
             }));
         }
 
-        Ok(ToolResponse::Message(AgentMessage {
-            role: MessageRole::Tool,
-            content: MessageContent::Text(format!(
+        Ok(ToolResult::text(
+            &ctx,
+            format!(
                 "Unknown subagent '{subagent}'. Available: {available:?}",
                 subagent = args.subagent_type,
                 available = available
-            )),
-            metadata: invocation.tool_call_id.map(|id| MessageMetadata {
-                tool_call_id: Some(id),
-                cache_control: None,
-            }),
-        }))
+            ),
+        ))
     }
 }
 
@@ -526,7 +525,7 @@ mod tests {
         let tool_names: Vec<_> = middleware
             .tools()
             .iter()
-            .map(|t| t.name().to_string())
+            .map(|t| t.schema().name.clone())
             .collect();
         assert!(tool_names.contains(&"write_todos".to_string()));
 
@@ -546,7 +545,7 @@ mod tests {
         let tool_names: Vec<_> = middleware
             .tools()
             .iter()
-            .map(|t| t.name().to_string())
+            .map(|t| t.schema().name.clone())
             .collect();
         for expected in ["ls", "read_file", "write_file", "edit_file"] {
             assert!(tool_names.contains(&expected.to_string()));
@@ -615,21 +614,22 @@ mod tests {
     async fn task_router_reports_unknown_subagent() {
         let registry = Arc::new(SubAgentRegistry::new(vec![]));
         let task_tool = TaskRouterTool::new(registry.clone());
+        let state = Arc::new(AgentStateSnapshot::default());
+        let ctx = ToolContext::new(state);
 
         let response = task_tool
-            .invoke(ToolInvocation {
-                tool_name: "task".into(),
-                args: json!({
+            .execute(
+                json!({
                     "description": "Do something",
                     "subagent_type": "unknown"
                 }),
-                tool_call_id: None,
-            })
+                ctx,
+            )
             .await
             .unwrap();
 
         match response {
-            ToolResponse::Message(msg) => match msg.content {
+            ToolResult::Message(msg) => match msg.content {
                 MessageContent::Text(text) => assert!(text.contains("Unknown subagent")),
                 other => panic!("expected text, got {other:?}"),
             },
@@ -657,7 +657,7 @@ mod tests {
         let tool_names: Vec<_> = middleware
             .tools()
             .iter()
-            .map(|t| t.name().to_string())
+            .map(|t| t.schema().name.clone())
             .collect();
         assert!(tool_names.contains(&"task".to_string()));
     }
@@ -672,20 +672,21 @@ mod tests {
             agent: Arc::new(StubAgent),
         }]));
         let task_tool = TaskRouterTool::new(registry.clone());
+        let state = Arc::new(AgentStateSnapshot::default());
+        let ctx = ToolContext::new(state).with_call_id(Some("call-42".into()));
         let response = task_tool
-            .invoke(ToolInvocation {
-                tool_name: "task".into(),
-                args: json!({
+            .execute(
+                json!({
                     "description": "do work",
                     "subagent_type": "stub-agent"
                 }),
-                tool_call_id: Some("call-42".into()),
-            })
+                ctx,
+            )
             .await
             .unwrap();
 
         match response {
-            ToolResponse::Message(msg) => {
+            ToolResult::Message(msg) => {
                 assert_eq!(msg.metadata.unwrap().tool_call_id.unwrap(), "call-42");
                 match msg.content {
                     MessageContent::Text(text) => assert_eq!(text, "stub-response"),

@@ -3,18 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::command::Command;
-use crate::messaging::{AgentMessage, ToolInvocation};
+use crate::messaging::AgentMessage;
 use crate::state::AgentStateSnapshot;
-
-/// Describes a tool that can be invoked by an agent at runtime.
-#[async_trait]
-pub trait ToolHandle: Send + Sync {
-    /// Returns the unique, stable name for this tool.
-    fn name(&self) -> &str;
-
-    /// Executes the tool given the invocation payload.
-    async fn invoke(&self, invocation: ToolInvocation) -> anyhow::Result<ToolResponse>;
-}
 
 /// Planner interface responsible for deciding which actions to take.
 #[async_trait]
@@ -72,8 +62,4 @@ pub trait AgentHandle: Send + Sync {
     ) -> anyhow::Result<AgentMessage>;
 }
 
-#[derive(Debug, Clone)]
-pub enum ToolResponse {
-    Message(AgentMessage),
-    Command(Command),
-}
+// ToolResponse has been removed - use ToolResult from crate::tools instead

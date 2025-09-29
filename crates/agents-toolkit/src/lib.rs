@@ -1,34 +1,23 @@
-//! Toolkit of default tools and helpers mirroring the Python reference implementation.
-//! Includes filesystem manipulation tools, todo list management, and planning scaffolds.
+//! Toolkit of built-in tools and utilities for AI agents
+//!
+//! This crate provides:
+//! - Built-in tools (filesystem, todos, etc.)
+//! - Tool builder utilities for creating custom tools
+//! - Tool registration and management helpers
 
-pub mod filesystem;
-pub mod todos;
-pub mod tools;
+pub mod builder;
+pub mod builtin;
 
-// Re-export helper functions for creating user tools (enhances existing system)
-pub use tools::{create_sync_tool, create_tool};
-
-use agents_core::agent::ToolResponse;
-use agents_core::messaging::{
-    AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+// Re-export core types from agents-core for convenience
+pub use agents_core::tools::{
+    Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
 };
-pub use filesystem::{EditFileTool, LsTool, ReadFileTool, WriteFileTool};
-pub use todos::WriteTodosTool;
 
-pub(crate) fn metadata_from(invocation: &ToolInvocation) -> Option<MessageMetadata> {
-    invocation.tool_call_id.as_ref().map(|id| MessageMetadata {
-        tool_call_id: Some(id.clone()),
-        cache_control: None,
-    })
-}
+// Re-export builder utilities
+pub use builder::{tool, tool_sync, ToolBuilder};
 
-pub(crate) fn tool_text_response(
-    invocation: &ToolInvocation,
-    message: impl Into<String>,
-) -> ToolResponse {
-    ToolResponse::Message(AgentMessage {
-        role: MessageRole::Tool,
-        content: MessageContent::Text(message.into()),
-        metadata: metadata_from(invocation),
-    })
-}
+// Re-export built-in tools
+pub use builtin::{
+    create_filesystem_tools, create_todos_tool, EditFileTool, LsTool, ReadFileTool,
+    WriteTodosTool, WriteFileTool,
+};

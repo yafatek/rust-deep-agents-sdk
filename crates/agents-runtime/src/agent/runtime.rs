@@ -11,9 +11,9 @@ use crate::middleware::{
     SummarizationMiddleware,
 };
 use agents_core::agent::{
-    AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle, ToolHandle,
-    ToolResponse,
+    AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
@@ -39,7 +39,7 @@ pub struct DeepAgent {
     instructions: String,
     planner: Arc<dyn PlannerHandle>,
     middlewares: Vec<Arc<dyn AgentMiddleware>>,
-    base_tools: Vec<Arc<dyn ToolHandle>>,
+    base_tools: Vec<ToolBox>,
     state: Arc<RwLock<AgentStateSnapshot>>,
     history: Arc<RwLock<Vec<AgentMessage>>>,
     _summarization: Option<Arc<SummarizationMiddleware>>,
@@ -52,20 +52,21 @@ pub struct DeepAgent {
 struct HitlPending {
     tool_name: String,
     payload: Value,
-    tool: Arc<dyn ToolHandle>,
+    tool: ToolBox,
     message: AgentMessage,
 }
 
 impl DeepAgent {
-    fn collect_tools(&self) -> HashMap<String, Arc<dyn ToolHandle>> {
-        let mut tools: HashMap<String, Arc<dyn ToolHandle>> = HashMap::new();
+    fn collect_tools(&self) -> HashMap<String, ToolBox> {
+        let mut tools: HashMap<String, ToolBox> = HashMap::new();
         for tool in &self.base_tools {
-            tools.insert(tool.name().to_string(), tool.clone());
+            tools.insert(tool.schema().name.clone(), tool.clone());
         }
         for middleware in &self.middlewares {
             for tool in middleware.tools() {
-                if self.should_include(tool.name()) {
-                    tools.insert(tool.name().to_string(), tool);
+                let tool_name = tool.schema().name.clone();
+                if self.should_include(&tool_name) {
+                    tools.insert(tool_name, tool);
                 }
             }
         }
@@ -150,44 +151,33 @@ impl DeepAgent {
 
     async fn execute_tool(
         &self,
-        tool: Arc<dyn ToolHandle>,
+        tool: ToolBox,
         tool_name: String,
         payload: Value,
     ) -> anyhow::Result<AgentMessage> {
-        let response = tool
-            .invoke(ToolInvocation {
-                tool_name: tool_name.clone(),
-                args: payload,
-                tool_call_id: None,
-            })
-            .await?;
+        let state_snapshot = self.state.read().unwrap().clone();
+        let ctx = ToolContext::with_mutable_state(
+            Arc::new(state_snapshot),
+            self.state.clone(),
+        );
 
-        Ok(self.apply_tool_response(response))
+        let result = tool.execute(payload, ctx).await?;
+        Ok(self.apply_tool_result(result))
     }
 
-    fn apply_tool_response(&self, response: ToolResponse) -> AgentMessage {
-        match response {
-            ToolResponse::Message(message) => {
+    fn apply_tool_result(&self, result: ToolResult) -> AgentMessage {
+        match result {
+            ToolResult::Message(message) => {
                 self.append_history(message.clone());
                 message
             }
-            ToolResponse::Command(command) => {
+            ToolResult::WithStateUpdate { message, state_diff } => {
                 if let Ok(mut state) = self.state.write() {
-                    command.clone().apply_to(&mut state);
+                    let command = agents_core::command::Command::with_state(state_diff);
+                    command.apply_to(&mut state);
                 }
-                let mut final_message = None;
-                for message in &command.messages {
-                    self.append_history(message.clone());
-                    final_message = Some(message.clone());
-                }
-                final_message.unwrap_or_else(|| AgentMessage {
-                    role: MessageRole::Tool,
-                    content: MessageContent::Text("Command executed.".into()),
-                    metadata: Some(MessageMetadata {
-                        tool_call_id: None,
-                        cache_control: None,
-                    }),
-                })
+                self.append_history(message.clone());
+                message
             }
         }
     }
@@ -393,7 +383,9 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
 
     // Prepare subagent registrations, optionally injecting a general-purpose subagent
-    let mut registrations = config.subagents.clone();
+    // TODO: Build actual sub-agents from subagent_configs
+    // For now, keep empty registrations until we implement the builder
+    let mut registrations: Vec<SubAgentRegistration> = Vec::new();
     if config.auto_general_purpose {
         let has_gp = registrations
             .iter()
