@@ -71,10 +71,17 @@ jobs:
       run: |
         # Update all crate versions to match the tag
         sed -i 's/^version = "0.0.1"/version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
+        sed -i 's/^version = "0.1.0"/version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
         # Update workspace dependency versions (format: version = "0.0.1", path = ...)
         sed -i 's/version = "0.0.1", path =/version = "${{ steps.version.outputs.VERSION }}", path =/g' crates/*/Cargo.toml
+        sed -i 's/version = "0.1.0", path =/version = "${{ steps.version.outputs.VERSION }}", path =/g' crates/*/Cargo.toml
         # Update workspace dependency versions (format: , version = "0.0.1")
         sed -i 's/, version = "0.0.1"/, version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
+        sed -i 's/, version = "0.1.0"/, version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
+    - name: Publish agents-macros
+      run: cargo publish -p agents-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+    - name: Wait for agents-macros to be available
+      run: sleep 30
     - name: Publish agents-core
       run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-core to be available
@@ -82,6 +89,10 @@ jobs:
     - name: Publish agents-toolkit
       run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-toolkit to be available
+      run: sleep 30
+    - name: Publish agents-persistence
+      run: cargo publish -p agents-persistence --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+    - name: Wait for agents-persistence to be available
       run: sleep 30
     - name: Publish agents-runtime
       run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
@@ -114,28 +125,40 @@ jobs:
 
           This release publishes version ${{ steps.version.outputs.VERSION }} of all crates to crates.io:
 
-          - **`agents-sdk`** - 🎉 **NEW!** Unified SDK with feature flags (recommended)
+          - **`agents-sdk`** - 🎉 Unified SDK with feature flags (recommended)
+          - `agents-macros` - Procedural macros (`#[tool]` attribute)
           - `agents-core` - Core traits and data models
           - `agents-toolkit` - Reusable tools and utilities
+          - `agents-persistence` - Database persistence (Redis, PostgreSQL)
           - `agents-runtime` - Async runtime orchestration
-          - `agents-aws` - AWS integrations
+          - `agents-aws` - AWS integrations (DynamoDB, Secrets Manager)
 
           ## Recommended Installation (Unified SDK):
           ```toml
           [dependencies]
           agents-sdk = "${{ steps.version.outputs.VERSION }}"  # Includes toolkit by default
 
-          # Or with specific features:
-          # agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["aws"] }
-          # agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["full"] }
+          # With AWS support:
+          agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["aws"] }
+          
+          # With Redis persistence:
+          agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["redis"] }
+          
+          # With PostgreSQL persistence:
+          agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["postgres"] }
+          
+          # All features:
+          agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["full"] }
           ```
 
           ## Individual Crates (Advanced):
           ```toml
           [dependencies]
+          agents-macros = "${{ steps.version.outputs.VERSION }}"
           agents-core = "${{ steps.version.outputs.VERSION }}"
           agents-runtime = "${{ steps.version.outputs.VERSION }}"
           agents-toolkit = "${{ steps.version.outputs.VERSION }}"
+          agents-persistence = { version = "${{ steps.version.outputs.VERSION }}", features = ["redis"] }
           agents-aws = "${{ steps.version.outputs.VERSION }}"
           ```
         draft: false
