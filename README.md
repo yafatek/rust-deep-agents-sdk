@@ -193,5 +193,15 @@ let agent = ConfigurableAgentBuilder::new("main instructions")
 - **Tool Validation**: Schema-based input/output validation
 - **Tool Metrics**: Performance and usage analytics
 
+## Support the Project
+
+If you find this project helpful, consider supporting its development:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/YOUR_USERNAME)
+[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/yafacs)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/YOUR_USERNAME)
+
+Your support helps maintain and improve this open-source project. Thank you! ❤️
+
 ## Next Steps
 Follow the [roadmap](docs/ROADMAP.md) to implement planners, runtime orchestration, AWS integrations, and customer-ready templates.
