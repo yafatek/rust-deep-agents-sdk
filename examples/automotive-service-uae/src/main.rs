@@ -1,7 +1,10 @@
 use agents_sdk::{
-    state::AgentStateSnapshot, tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig,
-    SubAgentConfig,
+    agent::AgentHandle,
+    llm::StreamChunk,
+    state::AgentStateSnapshot,
+    tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
 };
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -604,21 +607,11 @@ async fn main() -> anyhow::Result<()> {
     .build()?;
 
     println!("✅ Main agent built successfully!\n");
-    println!("📊 System Architecture:");
-    println!("  🎯 Main Agent: Customer Service Coordinator");
-    println!("  ├─ 🔧 Sub-Agent 1: Diagnostic Agent (car diagnosis & cost estimation)");
-    println!("  ├─ 📅 Sub-Agent 2: Booking Agent (appointment scheduling)");
-    println!("  ├─ 🎫 Sub-Agent 3: Ticketing Agent (support ticket management)");
-    println!("  ├─ 💳 Sub-Agent 4: Payment Agent (payment processing)");
-    println!("  ├─ 📱 Sub-Agent 5: Notification Agent (multi-channel communications)");
-    println!("  ├─ ⭐ Sub-Agent 6: Feedback Agent (satisfaction & feedback)");
-    println!("  └─ 🌐 General-Purpose Agent (fallback for general queries)\n");
 
     // ========================================================================
     // Test Complete Customer Journey
     // ========================================================================
-    println!("🧪 Testing Complete Customer Journey\n");
-    println!("{}\n", "=".repeat(60));
+
 
     let customer_message =
         "Hi! My name is Ahmed. I have a 2019 Toyota Camry with 85,000 km. \
@@ -630,36 +623,52 @@ async fn main() -> anyhow::Result<()> {
 
     println!("👤 Customer Message:");
     println!("{}\n", customer_message);
-    println!("{}\n", "=".repeat(60));
-    println!("🤖 Agent Processing...\n");
+    println!("🤖 Agent Response (Streaming - watch it type!):\n");
 
-    let response = main_agent
-        .handle_message(customer_message, Arc::new(AgentStateSnapshot::default()))
+    // Use streaming interface
+    let user_message = agents_sdk::messaging::AgentMessage {
+        role: agents_sdk::messaging::MessageRole::User,
+        content: agents_sdk::messaging::MessageContent::Text(customer_message.to_string()),
+        metadata: None,
+    };
+
+    let mut stream = main_agent
+        .handle_message_stream(user_message, Arc::new(AgentStateSnapshot::default()))
         .await?;
 
-    println!("✅ Agent Response:");
-    println!("{:?}\n", response);
+    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+
+    let mut full_response = String::new();
+
+    while let Some(chunk_result) = stream.next().await {
+        match chunk_result? {
+            StreamChunk::TextDelta(delta) => {
+                // Print the delta as it arrives
+                print!("{}", delta);
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                full_response.push_str(&delta);
+            }
+            StreamChunk::Done { message } => {
+                // Stream complete
+                println!("\n");
+                if full_response.is_empty() {
+                    // If we didn't get any deltas, use the final message
+                    if let agents_sdk::messaging::MessageContent::Text(text) = message.content {
+                        full_response = text;
+                    }
+                }
+                break;
+            }
+            StreamChunk::Error(error) => {
+                eprintln!("\n❌ Stream error: {}", error);
+                break;
+            }
+        }
+    }
+
+    println!("\n✅ Complete Response Received ({} characters)\n", full_response.len());
 
     println!("{}\n", "=".repeat(60));
     println!("🎉 Demo Completed Successfully!\n");
-
-    println!("💡 Key Features Demonstrated:");
-    println!("  ✅ Multi-agent coordination");
-    println!("  ✅ Specialized domain agents");
-    println!("  ✅ Complete customer journey");
-    println!("  ✅ UAE-specific business logic");
-    println!("  ✅ Automated tool execution");
-    println!("  ✅ Context-aware delegation");
-    println!("\n📝 Next Steps:");
-    println!("  - Set OPENAI_API_KEY environment variable");
-    println!("  - Run: cargo run --package automotive-service-uae");
-    println!("  - Observe how the agent coordinates all sub-agents");
-    println!("  - Test different customer scenarios\n");
-    println!("💰 Cost Savings:");
-    println!("  - Using GPT-4o-mini (default model)");
-    println!("  - ~95% cheaper than Claude Sonnet 4");
-    println!("  - Input: $0.15 per 1M tokens");
-    println!("  - Output: $0.60 per 1M tokens\n");
-
     Ok(())
 }

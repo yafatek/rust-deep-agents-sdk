@@ -1,8 +1,11 @@
-use agents_core::llm::{LanguageModel, LlmRequest, LlmResponse};
+use agents_core::llm::{ChunkStream, LanguageModel, LlmRequest, LlmResponse, StreamChunk};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
 use async_trait::async_trait;
+use futures::stream::{Stream, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct OpenAiConfig {
@@ -46,6 +49,8 @@ impl OpenAiChatModel {
 struct ChatRequest<'a> {
     model: &'a str,
     messages: &'a [OpenAiMessage],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -67,6 +72,23 @@ struct Choice {
 #[derive(Deserialize)]
 struct ChoiceMessage {
     content: String,
+}
+
+// Streaming response structures
+#[derive(Deserialize)]
+struct StreamResponse {
+    choices: Vec<StreamChoice>,
+}
+
+#[derive(Deserialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+    finish_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StreamDelta {
+    content: Option<String>,
 }
 
 fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
@@ -115,6 +137,7 @@ impl LanguageModel for OpenAiChatModel {
         let body = ChatRequest {
             model: &self.config.model,
             messages: &messages,
+            stream: None,
         };
         let url = self
             .config
@@ -173,5 +196,111 @@ impl LanguageModel for OpenAiChatModel {
                 metadata: None,
             },
         })
+    }
+
+    async fn generate_stream(&self, request: LlmRequest) -> anyhow::Result<ChunkStream> {
+        let messages = to_openai_messages(&request);
+        let body = ChatRequest {
+            model: &self.config.model,
+            messages: &messages,
+            stream: Some(true),
+        };
+        let url = self
+            .config
+            .api_url
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1/chat/completions");
+
+        tracing::debug!(
+            "OpenAI streaming request: model={}, messages={}",
+            self.config.model,
+            messages.len()
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&self.config.api_key)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            tracing::error!("OpenAI API error: status={}, body={}", status, error_text);
+            return Err(anyhow::anyhow!(
+                "OpenAI API error: {} - {}",
+                status,
+                error_text
+            ));
+        }
+
+        // Create stream from SSE response
+        let stream = response.bytes_stream();
+        let accumulated_content = Arc::new(Mutex::new(String::new()));
+
+        let chunk_stream = stream.map(move |result| {
+            let accumulated = accumulated_content.clone();
+            match result {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+
+                    // Parse SSE format: "data: {json}\n\n"
+                    for line in text.lines() {
+                        if line.starts_with("data: ") {
+                            let json_str = &line[6..];
+
+                            // Check for [DONE] marker
+                            if json_str == "[DONE]" {
+                                let content = accumulated.lock().unwrap().clone();
+                                let final_message = AgentMessage {
+                                    role: MessageRole::Agent,
+                                    content: MessageContent::Text(content),
+                                    metadata: None,
+                                };
+                                return Ok(StreamChunk::Done {
+                                    message: final_message,
+                                });
+                            }
+
+                            // Parse JSON chunk
+                            match serde_json::from_str::<StreamResponse>(json_str) {
+                                Ok(chunk) => {
+                                    if let Some(choice) = chunk.choices.first() {
+                                        if let Some(content) = &choice.delta.content {
+                                            accumulated.lock().unwrap().push_str(content);
+                                            return Ok(StreamChunk::TextDelta(content.clone()));
+                                        }
+
+                                        // Check if stream is finished
+                                        if choice.finish_reason.is_some() {
+                                            let content = accumulated.lock().unwrap().clone();
+                                            let final_message = AgentMessage {
+                                                role: MessageRole::Agent,
+                                                content: MessageContent::Text(content),
+                                                metadata: None,
+                                            };
+                                            return Ok(StreamChunk::Done {
+                                                message: final_message,
+                                            });
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to parse streaming chunk: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    // If no delta content was found, just continue
+                    Ok(StreamChunk::TextDelta(String::new()))
+                }
+                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+            }
+        });
+
+        Ok(Box::pin(chunk_stream))
     }
 }

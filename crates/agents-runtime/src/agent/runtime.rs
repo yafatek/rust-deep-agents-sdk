@@ -370,6 +370,52 @@ impl AgentHandle for DeepAgent {
     ) -> anyhow::Result<AgentMessage> {
         self.handle_message_internal(input, _state).await
     }
+
+    async fn handle_message_stream(
+        &self,
+        input: AgentMessage,
+        _state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<agents_core::agent::AgentStream> {
+        use agents_core::llm::{LlmRequest, StreamChunk};
+        use crate::planner::LlmBackedPlanner;
+
+        // Add input to history
+        self.append_history(input.clone());
+
+        // Build the request similar to handle_message_internal
+        let mut request = ModelRequest::new(&self.instructions, self.current_history());
+        let tools = self.collect_tools();
+
+        // Apply middleware modifications
+        for middleware in &self.middlewares {
+            let mut ctx = MiddlewareContext::with_request(&mut request, self.state.clone());
+            middleware.modify_model_request(&mut ctx).await?;
+        }
+
+        // Convert ModelRequest to LlmRequest and add tools
+        let tool_schemas: Vec<_> = tools.values().map(|t| t.schema()).collect();
+        let llm_request = LlmRequest {
+            system_prompt: request.system_prompt.clone(),
+            messages: request.messages.clone(),
+            tools: tool_schemas,
+        };
+
+        // Try to get the underlying LLM model for streaming
+        let planner_any = self.planner.as_any();
+
+        if let Some(llm_planner) = planner_any.downcast_ref::<LlmBackedPlanner>() {
+            // We have an LlmBackedPlanner, use its model for streaming
+            let model = llm_planner.model().clone();
+            let stream = model.generate_stream(llm_request).await?;
+            Ok(stream)
+        } else {
+            // Fallback to non-streaming
+            let response = self.handle_message_internal(input, _state).await?;
+            Ok(Box::pin(futures::stream::once(async move {
+                Ok(StreamChunk::Done { message: response })
+            })))
+        }
+    }
 }
 
 /// Create a deep agent from configuration - matches Python middleware assembly exactly

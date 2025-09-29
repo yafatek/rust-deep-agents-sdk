@@ -17,11 +17,12 @@ agents-core = { path = "../agents-core", version = "0.0.1" }
 agents-toolkit = { path = "../agents-toolkit", version = "0.0.1" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+futures = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { workspace = true }
 futures-util = "0.3.31"
 
