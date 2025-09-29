@@ -18,15 +18,29 @@ High-performance Rust framework for composing reusable "deep" AI agents with cus
 
 ## Installation
 
-Add the following to your `Cargo.toml`:
+Add the unified SDK to your `Cargo.toml`:
+
+```toml
+# Simple installation (includes toolkit by default)
+[dependencies]
+agents-sdk = "0.0.1"
+
+# Or choose specific features:
+# agents-sdk = { version = "0.0.1", default-features = false }  # Core only
+# agents-sdk = { version = "0.0.1", features = ["aws"] }       # With AWS
+# agents-sdk = { version = "0.0.1", features = ["full"] }      # Everything
+```
+
+### Individual Crates (Advanced)
+
+If you prefer granular control, you can also use individual crates:
 
 ```toml
 [dependencies]
-agents-runtime = "0.0.1"
-agents-core = "0.0.1"
-agents-toolkit = "0.0.1"
-# Optional: AWS integrations
-agents-aws = "0.0.1"
+agents-core = "0.0.1"      # Core traits and types
+agents-runtime = "0.0.1"   # Agent runtime and builders
+agents-toolkit = "0.0.1"   # Built-in tools (optional)
+agents-aws = "0.0.1"       # AWS integrations (optional)
 ```
 
 ## Quick Start
@@ -34,8 +48,7 @@ agents-aws = "0.0.1"
 ### Using the Published Crates
 
 ```rust
-use agents_runtime::{ConfigurableAgentBuilder, get_default_model};
-use agents_toolkit::create_tool;
+use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
 use serde_json::Value;
 
 #[tokio::main]
@@ -60,8 +73,14 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     // Use the agent
-    let response = agent.run("Please greet Alice using the greet tool").await?;
-    println!("{}", response);
+    use agents_sdk::state::AgentStateSnapshot;
+    use std::sync::Arc;
+
+    let response = agent.handle_message(
+        "Please greet Alice using the greet tool",
+        Arc::new(AgentStateSnapshot::default())
+    ).await?;
+    println!("{:?}", response);
 
     Ok(())
 }

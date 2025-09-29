@@ -87,6 +87,10 @@ jobs:
       run: sleep 30
     - name: Publish agents-aws
       run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    - name: Wait for agents-aws to be available
+      run: sleep 30
+    - name: Publish agents-sdk (unified SDK)
+      run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   create_release:
     needs: publish
@@ -108,12 +112,23 @@ jobs:
 
           This release publishes version ${{ steps.version.outputs.VERSION }} of all crates to crates.io:
 
+          - **`agents-sdk`** - 🎉 **NEW!** Unified SDK with feature flags (recommended)
           - `agents-core` - Core traits and data models
           - `agents-toolkit` - Reusable tools and utilities
           - `agents-runtime` - Async runtime orchestration
           - `agents-aws` - AWS integrations
 
-          You can now install any of these crates in your projects:
+          ## Recommended Installation (Unified SDK):
+          ```toml
+          [dependencies]
+          agents-sdk = "${{ steps.version.outputs.VERSION }}"  # Includes toolkit by default
+
+          # Or with specific features:
+          # agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["aws"] }
+          # agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["full"] }
+          ```
+
+          ## Individual Crates (Advanced):
           ```toml
           [dependencies]
           agents-core = "${{ steps.version.outputs.VERSION }}"
