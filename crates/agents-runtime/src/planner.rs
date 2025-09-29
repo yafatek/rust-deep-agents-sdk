@@ -41,10 +41,7 @@ impl PlannerHandle for LlmBackedPlanner {
         context: PlannerContext,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<PlannerDecision> {
-        let request = LlmRequest {
-            system_prompt: context.system_prompt.clone(),
-            messages: context.history.clone(),
-        };
+        let request = LlmRequest::new(context.system_prompt.clone(), context.history.clone());
         let response = self.model.generate(request).await?;
         let message = response.message;
 

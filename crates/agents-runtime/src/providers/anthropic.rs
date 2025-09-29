@@ -1,8 +1,10 @@
 use agents_core::llm::{LanguageModel, LlmRequest, LlmResponse};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
+use agents_core::tools::ToolSchema;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone)]
 pub struct AnthropicConfig {
@@ -35,6 +37,15 @@ struct AnthropicRequest {
     max_tokens: u32,
     system: String,
     messages: Vec<AnthropicMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<AnthropicTool>>,
+}
+
+#[derive(Serialize)]
+struct AnthropicTool {
+    name: String,
+    description: String,
+    input_schema: Value,
 }
 
 #[derive(Serialize)]
@@ -118,15 +129,37 @@ fn to_anthropic_messages(request: &LlmRequest) -> (String, Vec<AnthropicMessage>
     (system_prompt, messages)
 }
 
+/// Convert tool schemas to Anthropic tool format
+fn to_anthropic_tools(tools: &[ToolSchema]) -> Option<Vec<AnthropicTool>> {
+    if tools.is_empty() {
+        return None;
+    }
+
+    Some(
+        tools
+            .iter()
+            .map(|tool| AnthropicTool {
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                input_schema: serde_json::to_value(&tool.parameters)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+            })
+            .collect(),
+    )
+}
+
 #[async_trait]
 impl LanguageModel for AnthropicMessagesModel {
     async fn generate(&self, request: LlmRequest) -> anyhow::Result<LlmResponse> {
         let (system_prompt, messages) = to_anthropic_messages(&request);
+        let tools = to_anthropic_tools(&request.tools);
+
         let body = AnthropicRequest {
             model: self.config.model.clone(),
             max_tokens: self.config.max_output_tokens,
             system: system_prompt,
             messages,
+            tools,
         };
 
         let url = self
@@ -169,14 +202,14 @@ mod tests {
 
     #[test]
     fn anthropic_message_conversion_includes_system_prompt() {
-        let request = LlmRequest {
-            system_prompt: "You are helpful".into(),
-            messages: vec![AgentMessage {
+        let request = LlmRequest::new(
+            "You are helpful",
+            vec![AgentMessage {
                 role: MessageRole::User,
                 content: MessageContent::Text("Hello".into()),
                 metadata: None,
             }],
-        };
+        );
         let (system, messages) = to_anthropic_messages(&request);
         assert_eq!(system, "You are helpful");
         assert_eq!(messages.len(), 1);

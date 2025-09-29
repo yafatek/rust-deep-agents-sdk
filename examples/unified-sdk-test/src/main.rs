@@ -1,20 +1,36 @@
 use agents_sdk::{
-    create_tool, get_default_model, state::AgentStateSnapshot, ConfigurableAgentBuilder,
+    get_default_model, state::AgentStateSnapshot, tool, ToolParameterSchema, ToolResult,
+    ConfigurableAgentBuilder,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("🧪 Testing Unified Agents SDK");
+    dotenv::dotenv().ok();
+
+    // Create parameter schema for the greet tool
+    let mut params = HashMap::new();
+    params.insert(
+        "name".to_string(),
+        ToolParameterSchema::string("The name of the person to greet"),
+    );
+    let param_schema = ToolParameterSchema::object(
+        "Greet tool parameters",
+        params,
+        vec!["name".to_string()],
+    );
 
     // Create a simple tool using the unified SDK
-    let greet_tool = create_tool(
+    let greet_tool = tool(
         "greet",
         "Greets a person by name",
-        |args: Value| async move {
+        param_schema,
+        |args: Value, ctx| async move {
             let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("World");
-            Ok(format!("Hello, {}! 👋", name))
+            Ok(ToolResult::text(&ctx, format!("Hello, {}! 👋", name)))
         },
     );
 

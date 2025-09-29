@@ -23,7 +23,7 @@ use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
 use agents_runtime::providers::OpenAiConfig;
 use agents_runtime::ConfigurableAgentBuilder;
-use agents_toolkit::create_tool;
+use agents_toolkit::{tool, ToolParameterSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;

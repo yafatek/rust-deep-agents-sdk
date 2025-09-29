@@ -4,7 +4,8 @@
 //! including parameter structs that mirror the Python SDK API.
 
 use crate::middleware::{AgentMiddleware, HitlPolicy, SubAgentDescriptor, SubAgentRegistration};
-use agents_core::agent::{AgentHandle, PlannerHandle, ToolHandle};
+use agents_core::agent::{AgentHandle, PlannerHandle};
+use agents_core::tools::ToolBox;
 use agents_core::persistence::Checkpointer;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 /// ```
 #[derive(Default)]
 pub struct CreateDeepAgentParams {
-    pub tools: Vec<Arc<dyn ToolHandle>>,
+    pub tools: Vec<ToolBox>,
     pub instructions: String,
     pub middleware: Vec<Arc<dyn AgentMiddleware>>,
     pub model: Option<Arc<dyn agents_core::llm::LanguageModel>>,
@@ -42,8 +43,8 @@ pub struct CreateDeepAgentParams {
 pub struct DeepAgentConfig {
     pub instructions: String,
     pub planner: Arc<dyn PlannerHandle>,
-    pub tools: Vec<Arc<dyn ToolHandle>>,
-    pub subagents: Vec<SubAgentRegistration>,
+    pub tools: Vec<ToolBox>,
+    pub subagent_configs: Vec<SubAgentConfig>,
     pub summarization: Option<SummarizationConfig>,
     pub tool_interrupts: HashMap<String, HitlPolicy>,
     pub builtin_tools: Option<HashSet<String>>,
@@ -58,7 +59,7 @@ impl DeepAgentConfig {
             instructions: instructions.into(),
             planner,
             tools: Vec::new(),
-            subagents: Vec::new(),
+            subagent_configs: Vec::new(),
             summarization: None,
             tool_interrupts: HashMap::new(),
             builtin_tools: None,
@@ -68,18 +69,23 @@ impl DeepAgentConfig {
         }
     }
 
-    pub fn with_tool(mut self, tool: Arc<dyn ToolHandle>) -> Self {
+    pub fn with_tool(mut self, tool: ToolBox) -> Self {
         self.tools.push(tool);
         self
     }
 
-    pub fn with_subagent(
-        mut self,
-        descriptor: SubAgentDescriptor,
-        agent: Arc<dyn AgentHandle>,
-    ) -> Self {
-        self.subagents
-            .push(SubAgentRegistration { descriptor, agent });
+    /// Add a sub-agent configuration
+    pub fn with_subagent_config(mut self, config: SubAgentConfig) -> Self {
+        self.subagent_configs.push(config);
+        self
+    }
+
+    /// Add multiple sub-agent configurations
+    pub fn with_subagent_configs<I>(mut self, configs: I) -> Self
+    where
+        I: IntoIterator<Item = SubAgentConfig>,
+    {
+        self.subagent_configs.extend(configs);
         self
     }
 
@@ -126,62 +132,80 @@ impl DeepAgentConfig {
         self
     }
 
-    /// Convenience: construct and register a subagent from a simple configuration bundle.
-    pub fn with_subagent_config<I>(mut self, cfgs: I) -> Self
-    where
-        I: IntoIterator<Item = SubAgentConfig>,
-    {
-        for cfg in cfgs {
-            let planner = cfg.planner.unwrap_or_else(|| self.planner.clone());
-            let mut sub_cfg = DeepAgentConfig::new(cfg.instructions, planner)
-                .with_auto_general_purpose(false)
-                .with_prompt_caching(self.enable_prompt_caching);
-            if let Some(ref selected) = self.builtin_tools {
-                sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
-            }
-            if let Some(ref sum) = self.summarization {
-                sub_cfg = sub_cfg.with_summarization(sum.clone());
-            }
-            if let Some(tools) = cfg.tools {
-                for t in tools {
-                    sub_cfg = sub_cfg.with_tool(t);
-                }
-            } else {
-                for t in &self.tools {
-                    sub_cfg = sub_cfg.with_tool(t.clone());
-                }
-            }
-
-            let sub_agent = super::api::create_deep_agent_from_config(sub_cfg);
-            self = self.with_subagent(
-                SubAgentDescriptor {
-                    name: cfg.name,
-                    description: cfg.description,
-                },
-                Arc::new(sub_agent),
-            );
-        }
-        self
-    }
 }
 
 /// Configuration for creating and registering a subagent using a simple, Python-like shape.
 ///
-/// This mirrors the Python SubAgent TypedDict:
-/// ```python
-/// class SubAgent(TypedDict):
-///     name: str
-///     description: str
-///     prompt: str
-///     tools: NotRequired[list[str]]
-///     model_settings: NotRequired[dict[str, Any]]
-/// ```
+/// Configuration for a sub-agent - a full AI agent with its own LLM, tools, and memory.
+///
+/// A sub-agent is just like the main agent: it has its own system instructions,
+/// tools, LLM, and can maintain its own conversation history. The main agent
+/// delegates tasks to sub-agents via the `task` tool.
+///
+/// ## Required Fields:
+/// - `name`: Unique identifier for this sub-agent
+/// - `description`: What this sub-agent specializes in (shown to main agent)
+/// - `instructions`: System prompt for this sub-agent
+///
+/// ## Optional Fields:
+/// - `model`: LLM to use (defaults to parent agent's model if not specified)
+/// - `tools`: Tools available to this sub-agent (defaults to empty)
+/// - `builtin_tools`: Built-in tools to enable (filesystem, todos, etc.)
+/// - `enable_prompt_caching`: Whether to cache prompts for efficiency
 pub struct SubAgentConfig {
+    // Required fields
     pub name: String,
     pub description: String,
     pub instructions: String,
-    pub tools: Option<Vec<Arc<dyn ToolHandle>>>,
-    pub planner: Option<Arc<dyn PlannerHandle>>,
+
+    // Optional fields - agent configuration
+    pub model: Option<Arc<dyn agents_core::llm::LanguageModel>>,
+    pub tools: Option<Vec<ToolBox>>,
+    pub builtin_tools: Option<HashSet<String>>,
+    pub enable_prompt_caching: bool,
+}
+
+impl SubAgentConfig {
+    /// Create a new sub-agent configuration with required fields only
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        instructions: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            instructions: instructions.into(),
+            model: None,
+            tools: None,
+            builtin_tools: None,
+            enable_prompt_caching: false,
+        }
+    }
+
+    /// Set the LLM model for this sub-agent
+    pub fn with_model(mut self, model: Arc<dyn agents_core::llm::LanguageModel>) -> Self {
+        self.model = Some(model);
+        self
+    }
+
+    /// Set the tools for this sub-agent
+    pub fn with_tools(mut self, tools: Vec<ToolBox>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Enable specific built-in tools (filesystem, todos, etc.)
+    pub fn with_builtin_tools(mut self, tools: HashSet<String>) -> Self {
+        self.builtin_tools = Some(tools);
+        self
+    }
+
+    /// Enable prompt caching for this sub-agent
+    pub fn with_prompt_caching(mut self, enabled: bool) -> Self {
+        self.enable_prompt_caching = enabled;
+        self
+    }
 }
 
 impl IntoIterator for SubAgentConfig {
