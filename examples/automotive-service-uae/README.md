@@ -147,6 +147,142 @@ The system will demonstrate a complete customer journey:
 - Local payment methods and regulations
 - Regional service center locations
 
+## 🧠 How Sub-Agents Work
+
+### LLM Inheritance
+
+**By default, sub-agents inherit the parent agent's LLM.**
+
+In this example:
+```rust
+// Main agent uses OpenAI GPT-4o-mini
+let openai_config = OpenAiConfig {
+    api_key: std::env::var("OPENAI_API_KEY")?,
+    model: "gpt-4o-mini".to_string(),
+    api_url: None,
+};
+let model = Arc::new(OpenAiChatModel::new(openai_config)?);
+
+let main_agent = ConfigurableAgentBuilder::new(...)
+    .with_model(model)  // <-- Parent's model
+    .with_subagent_config([diagnostic_agent, booking_agent, ...])
+    .build()?;
+```
+
+**All 6 sub-agents (diagnostic, booking, ticketing, payment, notification, feedback) inherit GPT-4o-mini from the main agent.**
+
+### Execution Flow
+
+```
+┌─────────────┐
+│ Main Agent  │
+│ (GPT-4o-mini)│
+└──────┬──────┘
+       │ Main agent decides: "I need diagnostic help"
+       │
+       ▼
+┌──────────────────────────────────────────┐
+│ Main agent calls:                         │
+│ task(                                     │
+│   description="Customer has brake noise", │
+│   subagent_type="diagnostic-agent"        │
+│ )                                         │
+└──────────────────────────────────────────┘
+       │
+       ▼
+┌────────────────┐
+│ TaskRouterTool │  <-- Middleware handles this
+└───────┬────────┘
+        │ 1. Look up "diagnostic-agent" in registry
+        │ 2. Create fresh conversation with description
+        │
+        ▼
+┌──────────────────┐
+│ Diagnostic Agent │
+│ (GPT-4o-mini)    │ <-- Inherited from parent
+│                  │
+│ Tools:           │
+│ - diagnose_car   │
+│ - calc_cost      │
+│                  │
+│ Instructions:    │
+│ "You are expert" │
+│ "20+ years UAE"  │
+└────────┬─────────┘
+         │ Executes independently
+         │ Can call its own tools
+         │ Has its own conversation
+         │
+         ▼
+┌─────────────────────┐
+│ Sub-agent Response  │
+│ "Based on symptoms, │
+│  likely worn brake  │
+│  pads. Cost: 800AED"│
+└──────────┬──────────┘
+           │
+           ▼
+┌──────────────────┐
+│ Return to Main   │
+│ as Tool Result   │
+└──────────────────┘
+```
+
+### Context Quarantine
+
+**Main agent sees:**
+```
+User: "I have brake noise"
+Assistant: [calls task tool with diagnostic-agent]
+Tool Result: "Based on symptoms, likely worn brake pads. Cost: 800 AED"
+Assistant: "Based on the diagnosis, you have worn brake pads..."
+```
+
+**Main agent does NOT see:**
+- Sub-agent calling `diagnose_car_issue` tool
+- Sub-agent's internal reasoning
+- Sub-agent's intermediate steps
+
+This keeps the main agent's context clean and prevents token bloat!
+
+### Overriding the Model Per Sub-Agent
+
+If you want a sub-agent to use a **different** model (e.g., Claude for complex reasoning):
+
+```rust
+// Create a different model for this specific sub-agent
+let claude_config = AnthropicConfig {
+    api_key: std::env::var("ANTHROPIC_API_KEY")?,
+    model: "claude-sonnet-4-20250514".to_string(),
+    max_output_tokens: 8000,
+    api_url: None,
+    api_version: None,
+};
+let claude_model = Arc::new(AnthropicMessagesModel::new(claude_config)?);
+
+let diagnostic_agent = SubAgentConfig::new(
+    "diagnostic-agent",
+    "Expert automotive diagnostic specialist",
+    "You are an expert..."
+)
+.with_model(claude_model)  // <-- Override with Claude!
+.with_tools(vec![
+    DiagnoseCarIssueTool::as_tool(),
+    CalculateServiceCostTool::as_tool(),
+]);
+```
+
+Now you have:
+- **Main agent**: GPT-4o-mini (cost-effective coordination)
+- **Diagnostic sub-agent**: Claude Sonnet 4 (complex reasoning)
+- **Other sub-agents**: GPT-4o-mini (inherited)
+
+This is powerful for:
+- ✅ Using cheaper models for simple sub-agents
+- ✅ Using specialized models for complex reasoning
+- ✅ Cost optimization per sub-agent
+- ✅ Mixing providers (OpenAI + Anthropic + Gemini)
+
 ## 📊 Example Customer Interaction
 
 ```rust

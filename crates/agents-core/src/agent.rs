@@ -1,19 +1,25 @@
 use async_trait::async_trait;
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::command::Command;
+use crate::llm::StreamChunk;
 use crate::messaging::AgentMessage;
 use crate::state::AgentStateSnapshot;
 
 /// Planner interface responsible for deciding which actions to take.
 #[async_trait]
-pub trait PlannerHandle: Send + Sync {
+pub trait PlannerHandle: Send + Sync + std::any::Any {
     async fn plan(
         &self,
         context: PlannerContext,
         state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<PlannerDecision>;
+
+    /// Enable downcasting to concrete types
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Minimal metadata about an agent instance.
@@ -50,6 +56,9 @@ pub struct PlannerContext {
     pub system_prompt: String,
 }
 
+/// Type alias for a stream of agent response chunks
+pub type AgentStream = Pin<Box<dyn Stream<Item = anyhow::Result<StreamChunk>> + Send>>;
+
 /// Abstraction for hosting a fully configured agent (planner + tools + prompts).
 #[async_trait]
 pub trait AgentHandle: Send + Sync {
@@ -60,6 +69,20 @@ pub trait AgentHandle: Send + Sync {
         input: AgentMessage,
         state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<AgentMessage>;
+
+    /// Handle a message with streaming response
+    /// Default implementation falls back to non-streaming handle_message()
+    async fn handle_message_stream(
+        &self,
+        input: AgentMessage,
+        state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<AgentStream> {
+        // Default: call non-streaming and wrap result
+        let response = self.handle_message(input, state).await?;
+        Ok(Box::pin(futures::stream::once(async move {
+            Ok(StreamChunk::Done { message: response })
+        })))
+    }
 }
 
 // ToolResponse has been removed - use ToolResult from crate::tools instead

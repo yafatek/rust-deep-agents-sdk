@@ -17,6 +17,11 @@ impl LlmBackedPlanner {
     pub fn new(model: Arc<dyn LanguageModel>) -> Self {
         Self { model }
     }
+
+    /// Get the underlying language model for direct access (e.g., streaming)
+    pub fn model(&self) -> &Arc<dyn LanguageModel> {
+        &self.model
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +67,10 @@ impl PlannerHandle for LlmBackedPlanner {
                 },
             }),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
