@@ -1,8 +1,6 @@
 use agents_sdk::{
-    agent::AgentHandle,
-    llm::StreamChunk,
-    state::AgentStateSnapshot,
-    tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
+    agent::AgentHandle, llm::StreamChunk, state::AgentStateSnapshot, tool,
+    ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
 };
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -245,19 +243,12 @@ fn book_appointment(
 // ============================================================================
 
 #[tool("Generates a secure payment link for the customer")]
-fn generate_payment_link(
-    _customer_name: String,
-    amount_aed: f64,
-    description: String,
-) -> String {
+fn generate_payment_link(_customer_name: String, amount_aed: f64, description: String) -> String {
     let payment = PaymentLink {
         payment_id: format!("PAY-{}", Uuid::new_v4().to_string()[..8].to_uppercase()),
         amount_aed,
         description: description.clone(),
-        link: format!(
-            "https://pay.autouae.ae/checkout/{}",
-            Uuid::new_v4().to_string()
-        ),
+        link: format!("https://pay.autouae.ae/checkout/{}", Uuid::new_v4()),
         expires_at: (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339(),
     };
 
@@ -295,11 +286,7 @@ fn confirm_payment(payment_id: String, method: String) -> String {
 // ============================================================================
 
 #[tool("Sends notification to customer via SMS, Email, or WhatsApp")]
-fn send_notification(
-    channel: String,
-    recipient: String,
-    message: String,
-) -> String {
+fn send_notification(channel: String, recipient: String, message: String) -> String {
     let notification = Notification {
         notification_id: format!("NOT-{}", Uuid::new_v4().to_string()[..8].to_uppercase()),
         channel: channel.clone(),
@@ -317,7 +304,8 @@ fn send_notification(
 
     format!(
         "✅ Notification Sent!\n\n{}\n\n{}\nRecipient: {}\nDelivery Status: DELIVERED",
-        serde_json::to_string_pretty(&notification).unwrap_or_else(|_| format!("{:?}", notification)),
+        serde_json::to_string_pretty(&notification)
+            .unwrap_or_else(|_| format!("{:?}", notification)),
         channel_info,
         recipient
     )
@@ -612,9 +600,7 @@ async fn main() -> anyhow::Result<()> {
     // Test Complete Customer Journey
     // ========================================================================
 
-
-    let customer_message =
-        "Hi! My name is Ahmed. I have a 2019 Toyota Camry with 85,000 km. \
+    let customer_message = "Hi! My name is Ahmed. I have a 2019 Toyota Camry with 85,000 km. \
          Recently I've been hearing a strange grinding noise when I brake, \
          especially at high speeds. Also, my AC is not cooling as well as before. \
          Can you help me diagnose these issues and schedule a service? \
@@ -666,7 +652,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("\n✅ Complete Response Received ({} characters)\n", full_response.len());
+    println!(
+        "\n✅ Complete Response Received ({} characters)\n",
+        full_response.len()
+    );
 
     println!("{}\n", "=".repeat(60));
     println!("🎉 Demo Completed Successfully!\n");
