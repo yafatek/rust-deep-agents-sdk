@@ -2,15 +2,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use agents_core::agent::AgentHandle;
-use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::messaging::{
-    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
+    AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole,
 };
 use agents_core::prompts::{
     BASE_AGENT_PROMPT, FILESYSTEM_SYSTEM_PROMPT, TASK_SYSTEM_PROMPT, TASK_TOOL_DESCRIPTION,
     WRITE_TODOS_SYSTEM_PROMPT,
 };
 use agents_core::state::AgentStateSnapshot;
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_toolkit::{create_filesystem_tools, create_todos_tool};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -116,12 +116,12 @@ impl AgentMiddleware for SummarizationMiddleware {
 }
 
 pub struct PlanningMiddleware {
-    state: Arc<RwLock<AgentStateSnapshot>>,
+    _state: Arc<RwLock<AgentStateSnapshot>>,
 }
 
 impl PlanningMiddleware {
     pub fn new(state: Arc<RwLock<AgentStateSnapshot>>) -> Self {
-        Self { state }
+        Self { _state: state }
     }
 }
 
@@ -142,12 +142,12 @@ impl AgentMiddleware for PlanningMiddleware {
 }
 
 pub struct FilesystemMiddleware {
-    state: Arc<RwLock<AgentStateSnapshot>>,
+    _state: Arc<RwLock<AgentStateSnapshot>>,
 }
 
 impl FilesystemMiddleware {
     pub fn new(state: Arc<RwLock<AgentStateSnapshot>>) -> Self {
-        Self { state }
+        Self { _state: state }
     }
 }
 
@@ -436,7 +436,11 @@ impl Tool for TaskRouterTool {
         )
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let args: TaskInvocationArgs = serde_json::from_value(args)?;
         let available = self.available_subagents();
 

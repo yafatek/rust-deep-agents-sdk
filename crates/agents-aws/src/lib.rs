@@ -14,20 +14,22 @@
 //!
 //! ```rust,no_run
 //! # #[cfg(feature = "dynamodb")]
-//! use agents_aws::DynamoDbCheckpointer;
-//! use agents_sdk::ConfigurableAgentBuilder;
-//! use std::sync::Arc;
+//! # {
+//! use agents_aws::{DynamoDbCheckpointer, Checkpointer};
+//! use agents_core::state::AgentStateSnapshot;
 //!
-//! # #[tokio::main]
-//! # async fn main() -> anyhow::Result<()> {
-//! let checkpointer = Arc::new(
-//!     DynamoDbCheckpointer::new("agent-checkpoints").await?
-//! );
+//! # async fn example() -> anyhow::Result<()> {
+//! // Create a DynamoDB checkpointer
+//! let checkpointer = DynamoDbCheckpointer::new("agent-checkpoints").await?;
 //!
-//! let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-//!     .with_checkpointer(checkpointer)
-//!     .build()?;
+//! // Save agent state
+//! let state = AgentStateSnapshot::default();
+//! checkpointer.save_state(&"thread-id".to_string(), &state).await?;
+//!
+//! // Load agent state
+//! let loaded = checkpointer.load_state(&"thread-id".to_string()).await?;
 //! # Ok(())
+//! # }
 //! # }
 //! ```
 

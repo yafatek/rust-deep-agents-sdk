@@ -26,6 +26,7 @@ use std::time::Duration;
 ///
 /// ```rust,no_run
 /// use agents_persistence::RedisCheckpointer;
+/// use std::time::Duration;
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
@@ -86,14 +87,14 @@ impl Checkpointer for RedisCheckpointer {
         let key = self.key_for_thread(thread_id);
         let index_key = self.threads_index_key();
 
-        let json = serde_json::to_string(state)
-            .context("Failed to serialize agent state to JSON")?;
+        let json =
+            serde_json::to_string(state).context("Failed to serialize agent state to JSON")?;
 
         let mut conn = self.connection.clone();
 
         // Save the state
         if let Some(ttl) = self.ttl {
-            conn.set_ex::<_, _, ()>(&key, json, ttl.as_secs() as u64)
+            conn.set_ex::<_, _, ()>(&key, json, ttl.as_secs())
                 .await
                 .context("Failed to save state to Redis with TTL")?;
         } else {
@@ -116,10 +117,7 @@ impl Checkpointer for RedisCheckpointer {
         Ok(())
     }
 
-    async fn load_state(
-        &self,
-        thread_id: &ThreadId,
-    ) -> anyhow::Result<Option<AgentStateSnapshot>> {
+    async fn load_state(&self, thread_id: &ThreadId) -> anyhow::Result<Option<AgentStateSnapshot>> {
         let key = self.key_for_thread(thread_id);
         let mut conn = self.connection.clone();
 
@@ -228,8 +226,7 @@ impl RedisCheckpointerBuilder {
             .url
             .ok_or_else(|| anyhow::anyhow!("Redis URL is required"))?;
 
-        let client = redis::Client::open(url.as_str())
-            .context("Failed to create Redis client")?;
+        let client = redis::Client::open(url.as_str()).context("Failed to create Redis client")?;
 
         let connection = ConnectionManager::new(client)
             .await
@@ -323,7 +320,13 @@ mod tests {
         assert!(threads.contains(&"thread2".to_string()));
 
         // Cleanup
-        checkpointer.delete_thread(&"thread1".to_string()).await.unwrap();
-        checkpointer.delete_thread(&"thread2".to_string()).await.unwrap();
+        checkpointer
+            .delete_thread(&"thread1".to_string())
+            .await
+            .unwrap();
+        checkpointer
+            .delete_thread(&"thread2".to_string())
+            .await
+            .unwrap();
     }
 }
