@@ -51,7 +51,12 @@
 //! ## Features
 //!
 //! - `toolkit` (default): Includes agents-toolkit with built-in tools
-//! - `aws`: Includes AWS integrations (DynamoDB, Secrets Manager, etc.)
+//! - `aws`: Includes AWS integrations
+//! - `redis`: Redis-backed state persistence
+//! - `postgres`: PostgreSQL-backed state persistence
+//! - `dynamodb`: DynamoDB-backed state persistence (AWS)
+//! - `persistence`: Grouped feature for Redis + PostgreSQL
+//! - `aws-full`: Grouped feature for AWS + DynamoDB
 //! - `full`: Includes all features
 //!
 //! ## Installation Options
@@ -63,11 +68,81 @@
 //! # Core only (minimal installation)
 //! agents-sdk = { version = "0.0.1", default-features = false }
 //!
+//! # With specific persistence backend
+//! agents-sdk = { version = "0.0.1", features = ["redis"] }
+//! agents-sdk = { version = "0.0.1", features = ["postgres"] }
+//! agents-sdk = { version = "0.0.1", features = ["dynamodb"] }
+//!
 //! # With AWS integrations
-//! agents-sdk = { version = "0.0.1", features = ["aws"] }
+//! agents-sdk = { version = "0.0.1", features = ["aws-full"] }
 //!
 //! # Everything included
 //! agents-sdk = { version = "0.0.1", features = ["full"] }
+//! ```
+//!
+//! ## Persistence Examples
+//!
+//! ### Redis Checkpointer
+//!
+//! ```rust,no_run
+//! # #[cfg(feature = "redis")]
+//! # {
+//! use agents_sdk::{RedisCheckpointer, ConfigurableAgentBuilder};
+//! use std::sync::Arc;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let checkpointer = Arc::new(
+//!     RedisCheckpointer::new("redis://127.0.0.1:6379").await?
+//! );
+//!
+//! let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+//!     .with_checkpointer(checkpointer)
+//!     .build()?;
+//! # Ok(())
+//! # }
+//! # }
+//! ```
+//!
+//! ### PostgreSQL Checkpointer
+//!
+//! ```rust,no_run
+//! # #[cfg(feature = "postgres")]
+//! # {
+//! use agents_sdk::{PostgresCheckpointer, ConfigurableAgentBuilder};
+//! use std::sync::Arc;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let checkpointer = Arc::new(
+//!     PostgresCheckpointer::new("postgresql://user:pass@localhost/agents").await?
+//! );
+//!
+//! let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+//!     .with_checkpointer(checkpointer)
+//!     .build()?;
+//! # Ok(())
+//! # }
+//! # }
+//! ```
+//!
+//! ### DynamoDB Checkpointer
+//!
+//! ```rust,no_run
+//! # #[cfg(feature = "dynamodb")]
+//! # {
+//! use agents_sdk::{DynamoDbCheckpointer, ConfigurableAgentBuilder};
+//! use std::sync::Arc;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let checkpointer = Arc::new(
+//!     DynamoDbCheckpointer::new("agent-checkpoints").await?
+//! );
+//!
+//! let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+//!     .with_checkpointer(checkpointer)
+//!     .build()?;
+//! # Ok(())
+//! # }
+//! # }
 //! ```
 
 #![deny(missing_docs)]
@@ -99,6 +174,15 @@ pub use agents_macros::tool;
 #[cfg(feature = "aws")]
 #[cfg_attr(docsrs, doc(cfg(feature = "aws")))]
 pub use agents_aws::*;
+
+// Re-export persistence functionality (when persistence features are enabled)
+#[cfg(feature = "redis")]
+#[cfg_attr(docsrs, doc(cfg(feature = "redis")))]
+pub use agents_persistence::RedisCheckpointer;
+
+#[cfg(feature = "postgres")]
+#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
+pub use agents_persistence::PostgresCheckpointer;
 
 /// Prelude module for common imports
 ///
