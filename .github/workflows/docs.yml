@@ -224,8 +224,7 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
-        with:
-          enablement: true  # Automatically enable GitHub Pages if not already enabled
+        continue-on-error: true  # Skip if Pages not enabled yet
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
