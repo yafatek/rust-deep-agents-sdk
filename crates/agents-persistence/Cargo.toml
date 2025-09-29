@@ -1,0 +1,42 @@
+[package]
+name = "agents-persistence"
+version = "0.0.1"
+edition = "2021"
+description = "Database-backed persistence implementations for the Rust deep agents SDK (Redis, PostgreSQL)"
+authors = ["YAFATEK <hello@yafatek.dev>"]
+license = "MIT"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-persistence"
+keywords = ["ai", "agents", "llm", "persistence", "database"]
+categories = ["api-bindings", "database", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+agents-core = { path = "../agents-core", version = "0.0.1" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# Redis backend (optional)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+
+# PostgreSQL backend (optional)
+sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "json"], optional = true }
+
+[features]
+default = []
+redis = ["dep:redis"]
+postgres = ["dep:sqlx"]
+all = ["redis", "postgres"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[package.metadata.docs.rs]
+# Build docs with all features enabled
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -1,10 +1,9 @@
 use agents_core::llm::{ChunkStream, LanguageModel, LlmRequest, LlmResponse, StreamChunk};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
 use async_trait::async_trait;
-use futures::stream::{Stream, StreamExt};
+use futures::stream::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -239,68 +238,158 @@ impl LanguageModel for OpenAiChatModel {
         // Create stream from SSE response
         let stream = response.bytes_stream();
         let accumulated_content = Arc::new(Mutex::new(String::new()));
+        let buffer = Arc::new(Mutex::new(String::new()));
+
+        let is_done = Arc::new(Mutex::new(false));
+
+        // Clone Arcs for use in finale
+        let final_accumulated = accumulated_content.clone();
+        let final_is_done = is_done.clone();
 
         let chunk_stream = stream.map(move |result| {
             let accumulated = accumulated_content.clone();
+            let buffer = buffer.clone();
+            let is_done = is_done.clone();
+
+            // Check if we're already done
+            if *is_done.lock().unwrap() {
+                return Ok(StreamChunk::TextDelta(String::new()));
+            }
+
             match result {
                 Ok(bytes) => {
                     let text = String::from_utf8_lossy(&bytes);
 
-                    // Parse SSE format: "data: {json}\n\n"
-                    for line in text.lines() {
-                        if line.starts_with("data: ") {
-                            let json_str = &line[6..];
+                    // Append to buffer
+                    buffer.lock().unwrap().push_str(&text);
 
-                            // Check for [DONE] marker
-                            if json_str == "[DONE]" {
-                                let content = accumulated.lock().unwrap().clone();
-                                let final_message = AgentMessage {
-                                    role: MessageRole::Agent,
-                                    content: MessageContent::Text(content),
-                                    metadata: None,
-                                };
-                                return Ok(StreamChunk::Done {
-                                    message: final_message,
-                                });
-                            }
+                    let mut buf = buffer.lock().unwrap();
 
-                            // Parse JSON chunk
-                            match serde_json::from_str::<StreamResponse>(json_str) {
-                                Ok(chunk) => {
-                                    if let Some(choice) = chunk.choices.first() {
-                                        if let Some(content) = &choice.delta.content {
-                                            accumulated.lock().unwrap().push_str(content);
-                                            return Ok(StreamChunk::TextDelta(content.clone()));
-                                        }
+                    // Process complete SSE messages (separated by \n\n)
+                    let mut collected_deltas = String::new();
+                    let mut found_done = false;
+                    let mut found_finish = false;
 
-                                        // Check if stream is finished
-                                        if choice.finish_reason.is_some() {
-                                            let content = accumulated.lock().unwrap().clone();
-                                            let final_message = AgentMessage {
-                                                role: MessageRole::Agent,
-                                                content: MessageContent::Text(content),
-                                                metadata: None,
-                                            };
-                                            return Ok(StreamChunk::Done {
-                                                message: final_message,
-                                            });
+                    // Split on double newline to get complete SSE messages
+                    let parts: Vec<&str> = buf.split("\n\n").collect();
+                    let complete_messages = if parts.len() > 1 {
+                        &parts[..parts.len() - 1]  // All but last (potentially incomplete)
+                    } else {
+                        &[]  // No complete messages yet
+                    };
+
+                    // Process each complete SSE message
+                    for msg in complete_messages {
+                        for line in msg.lines() {
+                            if line.starts_with("data: ") {
+                                let json_str = line[6..].trim();
+
+                                // Check for [DONE] marker
+                                if json_str == "[DONE]" {
+                                    found_done = true;
+                                    break;
+                                }
+
+                                // Parse JSON chunk
+                                match serde_json::from_str::<StreamResponse>(json_str) {
+                                    Ok(chunk) => {
+                                        if let Some(choice) = chunk.choices.first() {
+                                            // Collect delta content
+                                            if let Some(content) = &choice.delta.content {
+                                                if !content.is_empty() {
+                                                    accumulated.lock().unwrap().push_str(content);
+                                                    collected_deltas.push_str(content);
+                                                }
+                                            }
+
+                                            // Check if stream is finished
+                                            if choice.finish_reason.is_some() {
+                                                found_finish = true;
+                                            }
                                         }
                                     }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to parse streaming chunk: {}", e);
+                                    Err(e) => {
+                                        tracing::debug!("Failed to parse SSE message: {}", e);
+                                    }
                                 }
                             }
                         }
+                        if found_done || found_finish {
+                            break;
+                        }
                     }
 
-                    // If no delta content was found, just continue
+                    // Clear processed messages from buffer, keep only incomplete part
+                    if complete_messages.len() > 0 {
+                        *buf = parts.last().unwrap_or(&"").to_string();
+                    }
+
+                    // Handle completion
+                    if found_done || found_finish {
+                        let content = accumulated.lock().unwrap().clone();
+                        let final_message = AgentMessage {
+                            role: MessageRole::Agent,
+                            content: MessageContent::Text(content),
+                            metadata: None,
+                        };
+                        *is_done.lock().unwrap() = true;
+                        buf.clear();
+                        return Ok(StreamChunk::Done {
+                            message: final_message,
+                        });
+                    }
+
+                    // Return collected deltas (may be empty)
+                    if !collected_deltas.is_empty() {
+                        return Ok(StreamChunk::TextDelta(collected_deltas));
+                    }
+
                     Ok(StreamChunk::TextDelta(String::new()))
                 }
-                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+                Err(e) => {
+                    // Stream ended - check if we have accumulated content
+                    if !*is_done.lock().unwrap() {
+                        let content = accumulated.lock().unwrap().clone();
+                        if !content.is_empty() {
+                            let final_message = AgentMessage {
+                                role: MessageRole::Agent,
+                                content: MessageContent::Text(content),
+                                metadata: None,
+                            };
+                            *is_done.lock().unwrap() = true;
+                            return Ok(StreamChunk::Done { message: final_message });
+                        }
+                    }
+                    Err(anyhow::anyhow!("Stream error: {}", e))
+                }
             }
         });
 
-        Ok(Box::pin(chunk_stream))
+        // Chain a final chunk to ensure Done is sent when stream completes
+        let stream_with_finale = chunk_stream.chain(futures::stream::once(async move {
+            // Check if we already sent Done
+            if !*final_is_done.lock().unwrap() {
+                let content = final_accumulated.lock().unwrap().clone();
+                if !content.is_empty() {
+                    let final_message = AgentMessage {
+                        role: MessageRole::Agent,
+                        content: MessageContent::Text(content),
+                        metadata: None,
+                    };
+                    let content_text = match &final_message.content {
+                        MessageContent::Text(t) => t.as_str(),
+                        _ => "non-text",
+                    };
+                    tracing::debug!("Stream ended naturally, sending final Done chunk with {} chars", content_text.len());
+                    return Ok(StreamChunk::Done {
+                        message: final_message,
+                    });
+                }
+            }
+            // Return empty delta if already done or no content
+            Ok(StreamChunk::TextDelta(String::new()))
+        }));
+
+        Ok(Box::pin(stream_with_finale))
     }
 }
