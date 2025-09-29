@@ -10,10 +10,11 @@ use crate::middleware::{
     PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
     SummarizationMiddleware,
 };
+use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
-    AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle, ToolHandle,
-    ToolResponse,
+    AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
@@ -39,7 +40,7 @@ pub struct DeepAgent {
     instructions: String,
     planner: Arc<dyn PlannerHandle>,
     middlewares: Vec<Arc<dyn AgentMiddleware>>,
-    base_tools: Vec<Arc<dyn ToolHandle>>,
+    base_tools: Vec<ToolBox>,
     state: Arc<RwLock<AgentStateSnapshot>>,
     history: Arc<RwLock<Vec<AgentMessage>>>,
     _summarization: Option<Arc<SummarizationMiddleware>>,
@@ -52,20 +53,21 @@ pub struct DeepAgent {
 struct HitlPending {
     tool_name: String,
     payload: Value,
-    tool: Arc<dyn ToolHandle>,
+    tool: ToolBox,
     message: AgentMessage,
 }
 
 impl DeepAgent {
-    fn collect_tools(&self) -> HashMap<String, Arc<dyn ToolHandle>> {
-        let mut tools: HashMap<String, Arc<dyn ToolHandle>> = HashMap::new();
+    fn collect_tools(&self) -> HashMap<String, ToolBox> {
+        let mut tools: HashMap<String, ToolBox> = HashMap::new();
         for tool in &self.base_tools {
-            tools.insert(tool.name().to_string(), tool.clone());
+            tools.insert(tool.schema().name.clone(), tool.clone());
         }
         for middleware in &self.middlewares {
             for tool in middleware.tools() {
-                if self.should_include(tool.name()) {
-                    tools.insert(tool.name().to_string(), tool);
+                let tool_name = tool.schema().name.clone();
+                if self.should_include(&tool_name) {
+                    tools.insert(tool_name, tool);
                 }
             }
         }
@@ -150,44 +152,33 @@ impl DeepAgent {
 
     async fn execute_tool(
         &self,
-        tool: Arc<dyn ToolHandle>,
+        tool: ToolBox,
         tool_name: String,
         payload: Value,
     ) -> anyhow::Result<AgentMessage> {
-        let response = tool
-            .invoke(ToolInvocation {
-                tool_name: tool_name.clone(),
-                args: payload,
-                tool_call_id: None,
-            })
-            .await?;
+        let state_snapshot = self.state.read().unwrap().clone();
+        let ctx = ToolContext::with_mutable_state(
+            Arc::new(state_snapshot),
+            self.state.clone(),
+        );
 
-        Ok(self.apply_tool_response(response))
+        let result = tool.execute(payload, ctx).await?;
+        Ok(self.apply_tool_result(result))
     }
 
-    fn apply_tool_response(&self, response: ToolResponse) -> AgentMessage {
-        match response {
-            ToolResponse::Message(message) => {
+    fn apply_tool_result(&self, result: ToolResult) -> AgentMessage {
+        match result {
+            ToolResult::Message(message) => {
                 self.append_history(message.clone());
                 message
             }
-            ToolResponse::Command(command) => {
+            ToolResult::WithStateUpdate { message, state_diff } => {
                 if let Ok(mut state) = self.state.write() {
-                    command.clone().apply_to(&mut state);
+                    let command = agents_core::command::Command::with_state(state_diff);
+                    command.apply_to(&mut state);
                 }
-                let mut final_message = None;
-                for message in &command.messages {
-                    self.append_history(message.clone());
-                    final_message = Some(message.clone());
-                }
-                final_message.unwrap_or_else(|| AgentMessage {
-                    role: MessageRole::Tool,
-                    content: MessageContent::Text("Command executed.".into()),
-                    metadata: Some(MessageMetadata {
-                        tool_call_id: None,
-                        cache_control: None,
-                    }),
-                })
+                self.append_history(message.clone());
+                message
             }
         }
     }
@@ -379,6 +370,52 @@ impl AgentHandle for DeepAgent {
     ) -> anyhow::Result<AgentMessage> {
         self.handle_message_internal(input, _state).await
     }
+
+    async fn handle_message_stream(
+        &self,
+        input: AgentMessage,
+        _state: Arc<AgentStateSnapshot>,
+    ) -> anyhow::Result<agents_core::agent::AgentStream> {
+        use agents_core::llm::{LlmRequest, StreamChunk};
+        use crate::planner::LlmBackedPlanner;
+
+        // Add input to history
+        self.append_history(input.clone());
+
+        // Build the request similar to handle_message_internal
+        let mut request = ModelRequest::new(&self.instructions, self.current_history());
+        let tools = self.collect_tools();
+
+        // Apply middleware modifications
+        for middleware in &self.middlewares {
+            let mut ctx = MiddlewareContext::with_request(&mut request, self.state.clone());
+            middleware.modify_model_request(&mut ctx).await?;
+        }
+
+        // Convert ModelRequest to LlmRequest and add tools
+        let tool_schemas: Vec<_> = tools.values().map(|t| t.schema()).collect();
+        let llm_request = LlmRequest {
+            system_prompt: request.system_prompt.clone(),
+            messages: request.messages.clone(),
+            tools: tool_schemas,
+        };
+
+        // Try to get the underlying LLM model for streaming
+        let planner_any = self.planner.as_any();
+
+        if let Some(llm_planner) = planner_any.downcast_ref::<LlmBackedPlanner>() {
+            // We have an LlmBackedPlanner, use its model for streaming
+            let model = llm_planner.model().clone();
+            let stream = model.generate_stream(llm_request).await?;
+            Ok(stream)
+        } else {
+            // Fallback to non-streaming
+            let response = self.handle_message_internal(input, _state).await?;
+            Ok(Box::pin(futures::stream::once(async move {
+                Ok(StreamChunk::Done { message: response })
+            })))
+        }
+    }
 }
 
 /// Create a deep agent from configuration - matches Python middleware assembly exactly
@@ -392,8 +429,58 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let planning = Arc::new(PlanningMiddleware::new(state.clone()));
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
 
-    // Prepare subagent registrations, optionally injecting a general-purpose subagent
-    let mut registrations = config.subagents.clone();
+    // Build sub-agents from configurations
+    let mut registrations: Vec<SubAgentRegistration> = Vec::new();
+
+    // Build custom sub-agents from configs
+    for subagent_config in &config.subagent_configs {
+        // Determine the planner for this sub-agent
+        let sub_planner = if let Some(ref model) = subagent_config.model {
+            // Sub-agent has its own model - wrap it in a planner
+            Arc::new(LlmBackedPlanner::new(model.clone())) as Arc<dyn PlannerHandle>
+        } else {
+            // Inherit parent's planner
+            config.planner.clone()
+        };
+
+        // Create a DeepAgentConfig for this sub-agent
+        let mut sub_cfg = DeepAgentConfig::new(
+            subagent_config.instructions.clone(),
+            sub_planner,
+        );
+
+        // Configure tools
+        if let Some(ref tools) = subagent_config.tools {
+            for tool in tools {
+                sub_cfg = sub_cfg.with_tool(tool.clone());
+            }
+        }
+
+        // Configure built-in tools
+        if let Some(ref builtin) = subagent_config.builtin_tools {
+            sub_cfg = sub_cfg.with_builtin_tools(builtin.iter().cloned());
+        }
+
+        // Sub-agents should not have their own sub-agents
+        sub_cfg = sub_cfg.with_auto_general_purpose(false);
+
+        // Configure prompt caching
+        sub_cfg = sub_cfg.with_prompt_caching(subagent_config.enable_prompt_caching);
+
+        // Build the sub-agent recursively
+        let sub_agent = create_deep_agent_from_config(sub_cfg);
+
+        // Register the sub-agent
+        registrations.push(SubAgentRegistration {
+            descriptor: SubAgentDescriptor {
+                name: subagent_config.name.clone(),
+                description: subagent_config.description.clone(),
+            },
+            agent: Arc::new(sub_agent),
+        });
+    }
+
+    // Optionally inject a general-purpose subagent
     if config.auto_general_purpose {
         let has_gp = registrations
             .iter()

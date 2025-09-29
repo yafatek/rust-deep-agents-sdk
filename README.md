@@ -28,6 +28,9 @@ agents-sdk = "0.0.1"
 # Or choose specific features:
 # agents-sdk = { version = "0.0.1", default-features = false }  # Core only
 # agents-sdk = { version = "0.0.1", features = ["aws"] }       # With AWS
+# agents-sdk = { version = "0.0.1", features = ["redis"] }     # With Redis persistence
+# agents-sdk = { version = "0.0.1", features = ["postgres"] }  # With PostgreSQL persistence
+# agents-sdk = { version = "0.0.1", features = ["dynamodb"] }  # With DynamoDB persistence
 # agents-sdk = { version = "0.0.1", features = ["full"] }      # Everything
 ```
 
@@ -86,6 +89,52 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+### Using Persistence Backends
+
+Choose the persistence layer that fits your infrastructure:
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, InMemoryCheckpointer};
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // InMemory (default, no external dependencies)
+    let checkpointer = Arc::new(InMemoryCheckpointer::new());
+    
+    // Redis (requires redis feature)
+    #[cfg(feature = "redis")]
+    let checkpointer = Arc::new(
+        agents_sdk::RedisCheckpointer::new("redis://127.0.0.1:6379").await?
+    );
+    
+    // PostgreSQL (requires postgres feature)
+    #[cfg(feature = "postgres")]
+    let checkpointer = Arc::new(
+        agents_sdk::PostgresCheckpointer::new("postgresql://user:pass@localhost/agents").await?
+    );
+    
+    // DynamoDB (requires dynamodb feature)
+    #[cfg(feature = "dynamodb")]
+    let checkpointer = Arc::new(
+        agents_sdk::DynamoDbCheckpointer::new("agent-checkpoints").await?
+    );
+
+    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+        .with_checkpointer(checkpointer)
+        .build()?;
+
+    // Save and load state across sessions
+    let thread_id = "user-123";
+    agent.save_state(thread_id).await?;
+    agent.load_state(thread_id).await?;
+    
+    Ok(())
+}
+```
+
+See [`examples/checkpointer-demo`](examples/checkpointer-demo) for a complete working example.
+
 ### Development Setup (From Source)
 
 ```bash
@@ -100,6 +149,7 @@ cargo test --all
 # Run examples
 cargo run --example simple-agent
 cargo run --example deep-research-agent
+cargo run --example checkpointer-demo
 ```
 
 ## Features
@@ -122,8 +172,14 @@ cargo run --example deep-research-agent
 
 **State Management**
 - **State Reducers**: Smart merging functions matching Python's `file_reducer` behavior
-- **Persistence**: `Checkpointer` trait with `InMemoryCheckpointer` implementation
+- **Persistence**: `Checkpointer` trait with multiple backend implementations
 - **Thread Management**: Save/load/delete agent conversation threads
+
+**Persistence Backends**
+- **InMemory**: Built-in, zero-config persistence (development)
+- **Redis**: High-performance in-memory data store with optional durability
+- **PostgreSQL**: ACID-compliant relational database with full SQL support
+- **DynamoDB**: AWS-managed NoSQL database with auto-scaling
 
 **Provider Support**
 - **Anthropic**: Claude models with prompt caching support

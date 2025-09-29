@@ -18,18 +18,29 @@ agents-runtime = { version = "0.0.1", path = "../agents-runtime" }
 
 # Optional dependencies controlled by features
 agents-toolkit = { version = "0.0.1", path = "../agents-toolkit", optional = true }
+agents-macros = { version = "0.1.0", path = "../agents-macros", optional = true }
 agents-aws = { version = "0.0.1", path = "../agents-aws", optional = true }
+agents-persistence = { version = "0.0.1", path = "../agents-persistence", optional = true }
 
 [features]
 # Default features - includes toolkit for a good out-of-box experience
 default = ["toolkit"]
 
 # Individual feature flags
-toolkit = ["dep:agents-toolkit"]
+toolkit = ["dep:agents-toolkit", "dep:agents-macros"]
 aws = ["dep:agents-aws"]
 
+# Persistence backends
+redis = ["dep:agents-persistence", "agents-persistence/redis"]
+postgres = ["dep:agents-persistence", "agents-persistence/postgres"]
+dynamodb = ["dep:agents-aws", "agents-aws/dynamodb"]
+
+# Grouped features
+persistence = ["redis", "postgres"]
+aws-full = ["aws", "dynamodb"]
+
 # Convenience feature for everything
-full = ["toolkit", "aws"]
+full = ["toolkit", "aws-full", "persistence"]
 
 [dev-dependencies]
 anyhow = { workspace = true }
