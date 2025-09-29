@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/agents-runtime.svg)](https://crates.io/crates/agents-runtime)
 [![Documentation](https://docs.rs/agents-runtime/badge.svg)](https://docs.rs/agents-runtime)
-[![License](https://img.shields.io/crates/l/agents-runtime.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 High-performance Rust framework for composing reusable "deep" AI agents with custom tools, sub-agents, and prompts. This repository contains the SDK workspace, AWS integration helpers, documentation, and deployment scaffolding.
 
@@ -197,9 +197,7 @@ let agent = ConfigurableAgentBuilder::new("main instructions")
 
 If you find this project helpful, consider supporting its development:
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/YOUR_USERNAME)
 [![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/yafacs)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/YOUR_USERNAME)
 
 Your support helps maintain and improve this open-source project. Thank you! ❤️
 
