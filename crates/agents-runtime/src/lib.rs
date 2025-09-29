@@ -9,13 +9,13 @@ use agents_core::messaging::AgentMessage;
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 
-pub mod graph;
+pub mod agent;
 pub mod middleware;
 pub mod planner;
 pub mod providers;
 
-// Re-export key functions for convenience
-pub use graph::get_default_model;
+// Re-export key functions for convenience - now from the agent module
+pub use agent::{create_deep_agent, create_async_deep_agent, get_default_model, ConfigurableAgentBuilder, DeepAgent};
 
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>
