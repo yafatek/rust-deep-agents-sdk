@@ -28,6 +28,8 @@ use super::config::DeepAgentConfig;
 // Built-in tool names exposed by middlewares. The `task` tool for subagents is not gated.
 const BUILTIN_TOOL_NAMES: &[&str] = &["write_todos", "ls", "read_file", "write_file", "edit_file"];
 
+// (no streaming types in baseline)
+
 /// Core Deep Agent runtime implementation
 /// 
 /// This struct contains all the runtime state and behavior for a Deep Agent,
@@ -69,6 +71,7 @@ impl DeepAgent {
         }
         tools
     }
+        // no streaming path in baseline
 
     fn should_include(&self, name: &str) -> bool {
         let is_builtin = BUILTIN_TOOL_NAMES.contains(&name);
