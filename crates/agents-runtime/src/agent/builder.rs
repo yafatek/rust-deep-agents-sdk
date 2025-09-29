@@ -13,9 +13,9 @@ use crate::providers::{
     OpenAiConfig,
 };
 use agents_core::agent::PlannerHandle;
-use agents_core::agent::ToolHandle;
 use agents_core::llm::LanguageModel;
 use agents_core::persistence::Checkpointer;
+use agents_core::tools::{Tool, ToolBox};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ use std::sync::Arc;
 pub struct ConfigurableAgentBuilder {
     instructions: String,
     planner: Option<Arc<dyn PlannerHandle>>,
-    tools: Vec<Arc<dyn ToolHandle>>,
+    tools: Vec<ToolBox>,
     subagents: Vec<SubAgentConfig>,
     summarization: Option<SummarizationConfig>,
     tool_interrupts: HashMap<String, HitlPolicy>,
@@ -81,14 +81,16 @@ impl ConfigurableAgentBuilder {
         Ok(self.with_model(model))
     }
 
-    pub fn with_tool(mut self, tool: Arc<dyn ToolHandle>) -> Self {
+    /// Add a tool to the agent
+    pub fn with_tool(mut self, tool: ToolBox) -> Self {
         self.tools.push(tool);
         self
     }
 
+    /// Add multiple tools
     pub fn with_tools<I>(mut self, tools: I) -> Self
     where
-        I: IntoIterator<Item = Arc<dyn ToolHandle>>,
+        I: IntoIterator<Item = ToolBox>,
     {
         self.tools.extend(tools);
         self
@@ -106,20 +108,19 @@ impl ConfigurableAgentBuilder {
     /// Each tool becomes a specialized subagent with that single tool.
     pub fn with_subagent_tools<I>(mut self, tools: I) -> Self
     where
-        I: IntoIterator<Item = Arc<dyn ToolHandle>>,
+        I: IntoIterator<Item = ToolBox>,
     {
         for tool in tools {
-            let tool_name = tool.name();
-            let subagent_config = SubAgentConfig {
-                name: format!("{}-agent", tool_name),
-                description: format!("Specialized agent for {} operations", tool_name),
-                instructions: format!(
+            let tool_name = tool.schema().name.clone();
+            let subagent_config = SubAgentConfig::new(
+                format!("{}-agent", tool_name),
+                format!("Specialized agent for {} operations", tool_name),
+                format!(
                     "You are a specialized agent. Use the {} tool to complete tasks efficiently.",
                     tool_name
                 ),
-                tools: Some(vec![tool]),
-                planner: None, // Will inherit from parent
-            };
+            )
+            .with_tools(vec![tool]);
             self.subagents.push(subagent_config);
         }
         self

@@ -17,7 +17,13 @@ pub mod providers;
 // Re-export key functions for convenience - now from the agent module
 pub use agent::{
     create_async_deep_agent, create_deep_agent, get_default_model, ConfigurableAgentBuilder,
-    DeepAgent,
+    DeepAgent, SubAgentConfig, SummarizationConfig,
+};
+
+// Re-export provider configurations and models
+pub use providers::{
+    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
+    OpenAiConfig,
 };
 
 /// Default runtime wrapper that delegates to an inner agent implementation.

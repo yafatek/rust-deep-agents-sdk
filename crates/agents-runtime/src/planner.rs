@@ -17,6 +17,11 @@ impl LlmBackedPlanner {
     pub fn new(model: Arc<dyn LanguageModel>) -> Self {
         Self { model }
     }
+
+    /// Get the underlying language model for direct access (e.g., streaming)
+    pub fn model(&self) -> &Arc<dyn LanguageModel> {
+        &self.model
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,10 +46,7 @@ impl PlannerHandle for LlmBackedPlanner {
         context: PlannerContext,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<PlannerDecision> {
-        let request = LlmRequest {
-            system_prompt: context.system_prompt.clone(),
-            messages: context.history.clone(),
-        };
+        let request = LlmRequest::new(context.system_prompt.clone(), context.history.clone());
         let response = self.model.generate(request).await?;
         let message = response.message;
 
@@ -65,6 +67,10 @@ impl PlannerHandle for LlmBackedPlanner {
                 },
             }),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
