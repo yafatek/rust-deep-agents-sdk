@@ -9,18 +9,10 @@ use std::collections::HashMap;
 pub type ThreadId = String;
 
 /// Configuration for a checkpointer instance.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CheckpointerConfig {
     /// Additional configuration parameters specific to the checkpointer implementation.
     pub params: HashMap<String, serde_json::Value>,
-}
-
-impl Default for CheckpointerConfig {
-    fn default() -> Self {
-        Self {
-            params: HashMap::new(),
-        }
-    }
 }
 
 /// Trait for persisting and retrieving agent state between conversation runs.
