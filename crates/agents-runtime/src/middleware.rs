@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use agents_core::agent::AgentHandle;
-use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_core::messaging::{
     AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole,
 };
@@ -11,6 +10,7 @@ use agents_core::prompts::{
     WRITE_TODOS_SYSTEM_PROMPT,
 };
 use agents_core::state::AgentStateSnapshot;
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
 use agents_toolkit::{create_filesystem_tools, create_todos_tool};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -436,7 +436,11 @@ impl Tool for TaskRouterTool {
         )
     }
 
-    async fn execute(&self, args: serde_json::Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        ctx: ToolContext,
+    ) -> anyhow::Result<ToolResult> {
         let args: TaskInvocationArgs = serde_json::from_value(args)?;
         let available = self.available_subagents();
 

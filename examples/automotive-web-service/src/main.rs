@@ -19,12 +19,7 @@ use axum::{
 };
 use futures::{stream::Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    convert::Infallible,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use uuid::Uuid;
@@ -106,7 +101,11 @@ fn diagnose_car_issue(
         },
         recommended_service: format!(
             "Recommended: Full inspection + {} service",
-            if mileage_km > 100000 { "major" } else { "minor" }
+            if mileage_km > 100000 {
+                "major"
+            } else {
+                "minor"
+            }
         ),
         estimated_cost_aed: if symptoms.to_lowercase().contains("engine") {
             2500.0
@@ -167,7 +166,9 @@ fn create_support_ticket(
         issue_description,
         priority,
         status: "Open".to_string(),
-        created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        created_at: chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string(),
     };
     serde_json::to_string_pretty(&ticket).unwrap()
 }
@@ -243,7 +244,9 @@ fn send_notification(recipient: String, channel: String, message: String) -> Str
         recipient,
         channel,
         message,
-        sent_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        sent_at: chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string(),
         status: "Sent".to_string(),
     };
     serde_json::to_string_pretty(&notification).unwrap()

@@ -351,23 +351,22 @@ fn collect_feedback(
 
 #[tool("Analyzes customer feedback and generates insights")]
 fn analyze_feedback_trends() -> String {
-    format!(
-        "📊 Customer Feedback Analysis (Last 30 Days):\n\n\
-         Overall Satisfaction: 4.6/5.0 ⭐\n\
-         Total Reviews: 487\n\n\
-         Top Positive Aspects:\n\
-         - Professional Staff: 92%\n\
-         - Quick Service: 88%\n\
-         - Fair Pricing: 85%\n\
-         - Clean Facility: 90%\n\n\
-         Areas for Improvement:\n\
-         - Waiting Time: 12% mentioned long waits\n\
-         - Parking Space: 8% found limited parking\n\n\
-         Trending Services:\n\
-         1. AC Maintenance (Summer season)\n\
-         2. Oil Change\n\
-         3. Brake Service"
-    )
+    "📊 Customer Feedback Analysis (Last 30 Days):\n\n\
+     Overall Satisfaction: 4.6/5.0 ⭐\n\
+     Total Reviews: 487\n\n\
+     Top Positive Aspects:\n\
+     - Professional Staff: 92%\n\
+     - Quick Service: 88%\n\
+     - Fair Pricing: 85%\n\
+     - Clean Facility: 90%\n\n\
+     Areas for Improvement:\n\
+     - Waiting Time: 12% mentioned long waits\n\
+     - Parking Space: 8% found limited parking\n\n\
+     Trending Services:\n\
+     1. AC Maintenance (Summer season)\n\
+     2. Oil Change\n\
+     3. Brake Service"
+        .to_string()
 }
 
 // ============================================================================
