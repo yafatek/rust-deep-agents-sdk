@@ -1,5 +1,9 @@
 # Rust Deep Agents SDK
 
+[![Crates.io](https://img.shields.io/crates/v/agents-runtime.svg)](https://crates.io/crates/agents-runtime)
+[![Documentation](https://docs.rs/agents-runtime/badge.svg)](https://docs.rs/agents-runtime)
+[![License](https://img.shields.io/crates/l/agents-runtime.svg)](LICENSE)
+
 High-performance Rust framework for composing reusable "deep" AI agents with custom tools, sub-agents, and prompts. This repository contains the SDK workspace, AWS integration helpers, documentation, and deployment scaffolding.
 
 ## Workspace Layout
@@ -12,14 +16,90 @@ High-performance Rust framework for composing reusable "deep" AI agents with cus
 - `deploy/` – Terraform modules and IaC assets for AWS environments.
 - `docs/` – Roadmap, ADRs, playbooks, and reference material.
 
+## Installation
+
+Add the unified SDK to your `Cargo.toml`:
+
+```toml
+# Simple installation (includes toolkit by default)
+[dependencies]
+agents-sdk = "0.0.1"
+
+# Or choose specific features:
+# agents-sdk = { version = "0.0.1", default-features = false }  # Core only
+# agents-sdk = { version = "0.0.1", features = ["aws"] }       # With AWS
+# agents-sdk = { version = "0.0.1", features = ["full"] }      # Everything
+```
+
+### Individual Crates (Advanced)
+
+If you prefer granular control, you can also use individual crates:
+
+```toml
+[dependencies]
+agents-core = "0.0.1"      # Core traits and types
+agents-runtime = "0.0.1"   # Agent runtime and builders
+agents-toolkit = "0.0.1"   # Built-in tools (optional)
+agents-aws = "0.0.1"       # AWS integrations (optional)
+```
+
 ## Quick Start
+
+### Using the Published Crates
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
+use serde_json::Value;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Create a simple tool
+    let my_tool = create_tool(
+        "greet",
+        "Greets a person by name",
+        |args: Value| async move {
+            let name = args.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("World");
+            Ok(format!("Hello, {}!", name))
+        }
+    );
+
+    // Build an agent with the default Claude model
+    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
+        .with_model(get_default_model())
+        .with_tool(my_tool)
+        .build()
+        .await?;
+
+    // Use the agent
+    use agents_sdk::state::AgentStateSnapshot;
+    use std::sync::Arc;
+
+    let response = agent.handle_message(
+        "Please greet Alice using the greet tool",
+        Arc::new(AgentStateSnapshot::default())
+    ).await?;
+    println!("{:?}", response);
+
+    Ok(())
+}
+```
+
+### Development Setup (From Source)
+
 ```bash
+git clone https://github.com/yafatek/rust-deep-agents-sdk.git
+cd rust-deep-agents-sdk
+
+# Format, lint, and test
 cargo fmt
 cargo clippy --all-targets --all-features
 cargo test --all
-cargo run -p agents-example-getting-started
-# or try the CLI harness
-cargo run -p agents-example-cli
+
+# Run examples
+cargo run --example simple-agent
+cargo run --example deep-research-agent
 ```
 
 ## Features

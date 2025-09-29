@@ -15,7 +15,10 @@ pub mod planner;
 pub mod providers;
 
 // Re-export key functions for convenience - now from the agent module
-pub use agent::{create_deep_agent, create_async_deep_agent, get_default_model, ConfigurableAgentBuilder, DeepAgent};
+pub use agent::{
+    create_async_deep_agent, create_deep_agent, get_default_model, ConfigurableAgentBuilder,
+    DeepAgent,
+};
 
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>

@@ -1,20 +1,23 @@
 //! Fluent builder API for constructing Deep Agents
-//! 
+//!
 //! This module provides the ConfigurableAgentBuilder that offers a fluent interface
 //! for building Deep Agents, mirroring the Python SDK's ergonomic construction patterns.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use agents_core::agent::PlannerHandle;
-use agents_core::llm::LanguageModel;
-use agents_core::persistence::Checkpointer;
-use agents_core::agent::ToolHandle;
-use crate::planner::LlmBackedPlanner;
-use crate::providers::{AnthropicConfig, AnthropicMessagesModel, OpenAiConfig, OpenAiChatModel, GeminiConfig, GeminiChatModel};
-use crate::middleware::HitlPolicy;
+use super::api::{create_async_deep_agent_from_config, create_deep_agent_from_config};
 use super::config::{DeepAgentConfig, SubAgentConfig, SummarizationConfig};
 use super::runtime::DeepAgent;
-use super::api::{create_deep_agent_from_config, create_async_deep_agent_from_config};
+use crate::middleware::HitlPolicy;
+use crate::planner::LlmBackedPlanner;
+use crate::providers::{
+    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
+    OpenAiConfig,
+};
+use agents_core::agent::PlannerHandle;
+use agents_core::agent::ToolHandle;
+use agents_core::llm::LanguageModel;
+use agents_core::persistence::Checkpointer;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Builder API to assemble a DeepAgent in a single fluent flow, mirroring the Python
 /// `create_configurable_agent` experience. Prefer this for ergonomic construction.

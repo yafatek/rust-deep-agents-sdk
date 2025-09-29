@@ -1,16 +1,16 @@
 //! Configuration structs and types for Deep Agents
-//! 
+//!
 //! This module contains all the configuration structures used to build Deep Agents,
 //! including parameter structs that mirror the Python SDK API.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use crate::middleware::{AgentMiddleware, HitlPolicy, SubAgentDescriptor, SubAgentRegistration};
 use agents_core::agent::{AgentHandle, PlannerHandle, ToolHandle};
 use agents_core::persistence::Checkpointer;
-use crate::middleware::{AgentMiddleware, HitlPolicy, SubAgentDescriptor, SubAgentRegistration};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Parameters for create_deep_agent() that mirror the Python API exactly
-/// 
+///
 /// This struct matches the Python function signature:
 /// ```python
 /// def create_deep_agent(
@@ -24,6 +24,7 @@ use crate::middleware::{AgentMiddleware, HitlPolicy, SubAgentDescriptor, SubAgen
 ///     tool_configs: Optional[dict[str, bool | ToolConfig]] = None,
 /// )
 /// ```
+#[derive(Default)]
 pub struct CreateDeepAgentParams {
     pub tools: Vec<Arc<dyn ToolHandle>>,
     pub instructions: String,
@@ -35,23 +36,8 @@ pub struct CreateDeepAgentParams {
     pub tool_configs: HashMap<String, HitlPolicy>,
 }
 
-impl Default for CreateDeepAgentParams {
-    fn default() -> Self {
-        Self {
-            tools: Vec::new(),
-            instructions: String::new(),
-            middleware: Vec::new(),
-            model: None,
-            subagents: Vec::new(),
-            context_schema: None,
-            checkpointer: None,
-            tool_configs: HashMap::new(),
-        }
-    }
-}
-
 /// Configuration for building a deep agent instance.
-/// 
+///
 /// This is the internal configuration used by the builder and runtime.
 pub struct DeepAgentConfig {
     pub instructions: String,
@@ -180,7 +166,7 @@ impl DeepAgentConfig {
 }
 
 /// Configuration for creating and registering a subagent using a simple, Python-like shape.
-/// 
+///
 /// This mirrors the Python SubAgent TypedDict:
 /// ```python
 /// class SubAgent(TypedDict):

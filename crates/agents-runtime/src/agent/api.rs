@@ -1,14 +1,14 @@
 //! Public API functions that mirror the Python SDK exactly
-//! 
+//!
 //! This module provides the main entry points for creating Deep Agents,
 //! matching the Python `create_deep_agent()` and `async_create_deep_agent()` functions.
 
-use std::sync::Arc;
-use agents_core::llm::LanguageModel;
-use crate::providers::{AnthropicConfig, AnthropicMessagesModel};
-use super::config::{CreateDeepAgentParams, DeepAgentConfig};
 use super::builder::ConfigurableAgentBuilder;
+use super::config::{CreateDeepAgentParams, DeepAgentConfig};
 use super::runtime::DeepAgent;
+use crate::providers::{AnthropicConfig, AnthropicMessagesModel};
+use agents_core::llm::LanguageModel;
+use std::sync::Arc;
 
 /// Returns the default language model configured
 /// Uses Claude Sonnet 4 with 64000 max tokens, mirroring the Python SDK defaults.
@@ -27,7 +27,7 @@ pub fn get_default_model() -> anyhow::Result<Arc<dyn LanguageModel>> {
 }
 
 /// Create a deep agent - matches Python create_deep_agent() API exactly
-/// 
+///
 /// This is the main entry point that mirrors the Python SDK:
 /// ```python
 /// agent = create_deep_agent(
@@ -90,11 +90,11 @@ pub fn create_deep_agent(params: CreateDeepAgentParams) -> anyhow::Result<DeepAg
     builder.build()
 }
 
-/// Async constructor alias to mirror the Python API surface. 
-/// 
-/// The underlying runtime already executes every tool and planner call asynchronously, 
+/// Async constructor alias to mirror the Python API surface.
+///
+/// The underlying runtime already executes every tool and planner call asynchronously,
 /// so this currently delegates to `create_deep_agent`.
-/// 
+///
 /// Mirrors Python's `async_create_deep_agent()` function.
 pub fn create_async_deep_agent(params: CreateDeepAgentParams) -> anyhow::Result<DeepAgent> {
     create_deep_agent(params)
