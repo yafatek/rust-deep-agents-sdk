@@ -1,4 +1,6 @@
-use agents_sdk::{ConfigurableAgentBuilder, create_tool, get_default_model, state::AgentStateSnapshot};
+use agents_sdk::{
+    create_tool, get_default_model, state::AgentStateSnapshot, ConfigurableAgentBuilder,
+};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -11,11 +13,9 @@ async fn main() -> anyhow::Result<()> {
         "greet",
         "Greets a person by name",
         |args: Value| async move {
-            let name = args.get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("World");
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("World");
             Ok(format!("Hello, {}! 👋", name))
-        }
+        },
     );
 
     // Build an agent using the unified SDK
@@ -27,10 +27,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Test the agent
     println!("🤖 Testing agent...");
-    let response = agent.handle_message(
-        "Please greet Alice using the greet tool",
-        Arc::new(AgentStateSnapshot::default())
-    ).await?;
+    let response = agent
+        .handle_message(
+            "Please greet Alice using the greet tool",
+            Arc::new(AgentStateSnapshot::default()),
+        )
+        .await?;
 
     println!("✅ Agent Response: {:?}", response);
     println!("🎉 Unified SDK test completed successfully!");
