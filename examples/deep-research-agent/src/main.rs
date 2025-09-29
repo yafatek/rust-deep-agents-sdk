@@ -1,24 +1,24 @@
 //! Deep Research Agent - A comprehensive example showcasing the full Deep Agent pattern
-//! 
+//!
 //! This example demonstrates:
 //! - Main orchestrator agent with planning capabilities
 //! - Specialized subagents (research-agent, critique-agent)
 //! - File system operations (question.txt, final_report.md)
 //! - Tool delegation and parallel execution
 //! - Multi-step workflows with feedback loops
-//! 
+//!
 //! the Deep Agent framework for complex, multi-actor AI workflows.
 
-use std::sync::Arc;
 use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
-use agents_runtime::ConfigurableAgentBuilder;
 use agents_runtime::agent::SubAgentConfig;
 use agents_runtime::providers::OpenAiConfig;
+use agents_runtime::ConfigurableAgentBuilder;
 use agents_toolkit::create_tool;
-use serde_json::Value;
-use serde::{Deserialize, Serialize};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "deep-research-agent")]
@@ -27,7 +27,7 @@ struct Cli {
     /// Research question to investigate
     #[arg(short, long)]
     question: Option<String>,
-    
+
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -82,11 +82,11 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
     }
 
     let tavily_response: TavilyResponse = response.json().await?;
-    
+
     // Format results for research purposes
     let mut formatted_results = String::new();
     formatted_results.push_str(&format!("# Search Results for: '{}'\n\n", query));
-    
+
     for (i, result) in tavily_response.results.iter().enumerate() {
         formatted_results.push_str(&format!(
             "## Source {}: {}\n**URL:** {}\n**Relevance:** {:.2}\n\n**Content:**\n{}\n\n---\n\n",
@@ -97,18 +97,18 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
             result.content
         ));
     }
-    
+
     if tavily_response.results.is_empty() {
         formatted_results.push_str("No results found for this query.\n");
     }
-    
+
     Ok(formatted_results)
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    
+
     // Initialize tracing
     if cli.verbose {
         tracing_subscriber::fmt()
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
             .with_max_level(tracing::Level::INFO)
             .init();
     }
-    
+
     dotenv::dotenv().ok();
 
     println!("🧠 Deep Research Agent - Advanced Multi-Agent System");
@@ -133,12 +133,11 @@ async fn main() -> anyhow::Result<()> {
             let query = args.get("query")
                 .and_then(|v| v.as_str())
                 .unwrap_or("default query");
-            
+
             let max_results = args.get("max_results")
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32)
                 .unwrap_or(5);
-            
             match call_tavily_search(query, Some(max_results)).await {
                 Ok(results) => Ok(results),
                 Err(e) => Ok(format!("❌ Search failed: {}", e))
@@ -276,7 +275,7 @@ Remember: Only edit files one at a time to avoid conflicts. Use the task tool to
     let openai_config = OpenAiConfig::new(
         std::env::var("OPENAI_API_KEY")
             .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?,
-        "gpt-4o-mini"
+        "gpt-4o-mini",
     );
 
     // Create checkpointer for state persistence
@@ -308,7 +307,7 @@ Remember: Only edit files one at a time to avoid conflicts. Use the task tool to
         println!("   Example: 'Compare the environmental impact of solar vs wind energy'");
         println!("   Example: 'Analyze the current state of quantum computing in 2024'");
         print!("\n🔍 Research question: ");
-        
+
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         input.trim().to_string()
@@ -328,10 +327,9 @@ Remember: Only edit files one at a time to avoid conflicts. Use the task tool to
     println!("\n⏳ This may take a few minutes for thorough research...\n");
 
     // Start the research process
-    let response = agent.handle_message(
-        &research_question,
-        Arc::new(AgentStateSnapshot::default()),
-    ).await?;
+    let response = agent
+        .handle_message(&research_question, Arc::new(AgentStateSnapshot::default()))
+        .await?;
 
     println!("🎯 Research Process Initiated:");
     println!("{}", response.content.as_text().unwrap_or("No response"));
@@ -339,7 +337,7 @@ Remember: Only edit files one at a time to avoid conflicts. Use the task tool to
     // Save state for potential continuation
     let thread_id = "deep-research-session".to_string();
     agent.save_state(&thread_id).await?;
-    
+
     println!("\n💾 Research session saved. You can continue this research later.");
     println!("🎉 Deep Research Agent completed successfully!");
 

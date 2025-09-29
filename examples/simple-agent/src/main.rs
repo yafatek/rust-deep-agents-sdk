@@ -1,32 +1,32 @@
 //! Simple Deep Agent example using OpenAI GPT-4o-mini
-//! 
+//!
 //! This example shows how to create a basic Deep Agent using the Rust SDK
 //! with OpenAI's GPT-4o-mini model, demonstrating the Python SDK equivalence:
-//! 
+//!
 //! Python equivalent:
 //! ```python
 //! from deepagents import create_deep_agent
 //! from langchain_openai import ChatOpenAI
-//! 
+//!
 //! model = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 //! agent = create_deep_agent(
 //!     tools=[internet_search],
 //!     instructions="You are an expert researcher...",
 //!     model=model,
 //! )
-//! 
+//!
 //! result = agent.invoke({"messages": [{"role": "user", "content": "what is langgraph?"}]})
 //! ```
 
-use std::sync::Arc;
 use agents_core::agent::AgentHandle;
 use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
-use agents_runtime::ConfigurableAgentBuilder;
 use agents_runtime::providers::OpenAiConfig;
+use agents_runtime::ConfigurableAgentBuilder;
 use agents_toolkit::create_tool;
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::Arc;
 
 // Tavily API structures
 #[derive(Serialize)]
@@ -77,11 +77,11 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
     }
 
     let tavily_response: TavilyResponse = response.json().await?;
-    
+
     // Format the results nicely
     let mut formatted_results = String::new();
     formatted_results.push_str(&format!("🔍 Search Results for '{}'\n\n", query));
-    
+
     for (i, result) in tavily_response.results.iter().enumerate() {
         formatted_results.push_str(&format!(
             "{}. **{}**\n   URL: {}\n   Content: {}\n   Score: {:.2}\n\n",
@@ -92,11 +92,11 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
             result.score
         ));
     }
-    
+
     if tavily_response.results.is_empty() {
         formatted_results.push_str("No results found for this query.");
     }
-    
+
     Ok(formatted_results)
 }
 
@@ -115,14 +115,16 @@ async fn main() -> anyhow::Result<()> {
         "internet_search",
         "Search the internet for information on any topic using Tavily API",
         |args: Value| async move {
-            let query = args.get("query")
+            let query = args
+                .get("query")
                 .and_then(|v| v.as_str())
                 .unwrap_or("default query");
-            
-            let max_results = args.get("max_results")
+
+            let max_results = args
+                .get("max_results")
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32);
-            
+
             // Call real Tavily search API
             match call_tavily_search(query, max_results).await {
                 Ok(results) => Ok(results),
@@ -134,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
                     ))
                 }
             }
-        }
+        },
     );
 
     let tools = vec![internet_search];
@@ -172,7 +174,7 @@ IMPORTANT: For search requests, you MUST use the internet_search tool to get cur
     let openai_config = OpenAiConfig::new(
         std::env::var("OPENAI_API_KEY")
             .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?,
-        "gpt-4o-mini" // Using GPT-4o-mini (fast and cost-effective)
+        "gpt-4o-mini", // Using GPT-4o-mini (fast and cost-effective)
     );
 
     // Create a checkpointer for state persistence
@@ -192,12 +194,14 @@ IMPORTANT: For search requests, you MUST use the internet_search tool to get cur
     let user_message = "Search the Web for infromation about Yafa cloud Services LLC pls";
     println!("\n🗣️  User: {}", user_message);
 
-    let response = agent.handle_message(
-        user_message,
-        Arc::new(AgentStateSnapshot::default()),
-    ).await?;
+    let response = agent
+        .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
+        .await?;
 
-    println!("🤖 Agent: {}", response.content.as_text().unwrap_or("No response"));
+    println!(
+        "🤖 Agent: {}",
+        response.content.as_text().unwrap_or("No response")
+    );
 
     // Demonstrate state persistence
     println!("\n💾 Testing state persistence...");

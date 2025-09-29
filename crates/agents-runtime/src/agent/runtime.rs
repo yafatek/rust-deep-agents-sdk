@@ -1,10 +1,15 @@
 //! Deep Agent runtime implementation
-//! 
+//!
 //! This module contains the core DeepAgent struct and its runtime behavior,
 //! including message handling, tool execution, HITL support, and state management.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use super::config::DeepAgentConfig;
+use crate::middleware::{
+    AgentMiddleware, AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware,
+    FilesystemMiddleware, HumanInLoopMiddleware, MiddlewareContext, ModelRequest,
+    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
+    SummarizationMiddleware,
+};
 use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle, ToolHandle,
     ToolResponse,
@@ -17,19 +22,16 @@ use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::middleware::{
-    AgentMiddleware, AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware,
-    FilesystemMiddleware, HumanInLoopMiddleware, MiddlewareContext, ModelRequest,
-    PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
-    SummarizationMiddleware,
-};
-use super::config::DeepAgentConfig;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 
 // Built-in tool names exposed by middlewares. The `task` tool for subagents is not gated.
 const BUILTIN_TOOL_NAMES: &[&str] = &["write_todos", "ls", "read_file", "write_file", "edit_file"];
 
+// (no streaming types in baseline)
+
 /// Core Deep Agent runtime implementation
-/// 
+///
 /// This struct contains all the runtime state and behavior for a Deep Agent,
 /// including middleware management, tool execution, HITL support, and state persistence.
 pub struct DeepAgent {
@@ -69,6 +71,7 @@ impl DeepAgent {
         }
         tools
     }
+    // no streaming path in baseline
 
     fn should_include(&self, name: &str) -> bool {
         let is_builtin = BUILTIN_TOOL_NAMES.contains(&name);
@@ -379,7 +382,7 @@ impl AgentHandle for DeepAgent {
 }
 
 /// Create a deep agent from configuration - matches Python middleware assembly exactly
-/// 
+///
 /// This function assembles the middleware stack in the same order as the Python SDK:
 /// planning → filesystem → subagents → summarization → prompt caching → optional HITL
 pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
@@ -388,7 +391,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
 
     let planning = Arc::new(PlanningMiddleware::new(state.clone()));
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
-    
+
     // Prepare subagent registrations, optionally injecting a general-purpose subagent
     let mut registrations = config.subagents.clone();
     if config.auto_general_purpose {
@@ -445,7 +448,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         middlewares.push(summary.clone());
     }
     if config.enable_prompt_caching {
-        middlewares.push(Arc::new(AnthropicPromptCachingMiddleware::default()));
+        middlewares.push(Arc::new(AnthropicPromptCachingMiddleware::with_defaults()));
     }
     if let Some(ref hitl_mw) = hitl {
         middlewares.push(hitl_mw.clone());
