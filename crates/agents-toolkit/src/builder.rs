@@ -126,6 +126,41 @@ where
         .build_sync(handler)
 }
 
+/// Simple helper to create a tool from an async closure (backwards compatibility)
+/// This is a simpler API for basic tools that don't need explicit parameter schemas.
+/// The schema will be inferred as accepting any JSON object.
+pub fn create_tool<F, Fut>(
+    name: impl Into<String>,
+    description: impl Into<String>,
+    handler: F,
+) -> ToolBox
+where
+    F: Fn(Value) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = anyhow::Result<String>> + Send + 'static,
+{
+    let name = name.into();
+    let description_str = description.into();
+
+    // Create a simple schema that accepts any parameters
+    let parameters = ToolParameterSchema::object(
+        "Tool parameters",
+        Default::default(),
+        Vec::new(),
+    );
+
+    let handler = Arc::new(handler);
+
+    ToolBuilder::new(name, description_str)
+        .with_parameters(parameters)
+        .build_async(move |args, ctx| {
+            let handler = handler.clone();
+            async move {
+                let result = handler(args).await?;
+                Ok(ToolResult::text(&ctx, result))
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

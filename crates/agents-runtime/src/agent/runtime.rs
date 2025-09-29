@@ -10,6 +10,7 @@ use crate::middleware::{
     PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
     SummarizationMiddleware,
 };
+use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
@@ -382,10 +383,58 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let planning = Arc::new(PlanningMiddleware::new(state.clone()));
     let filesystem = Arc::new(FilesystemMiddleware::new(state.clone()));
 
-    // Prepare subagent registrations, optionally injecting a general-purpose subagent
-    // TODO: Build actual sub-agents from subagent_configs
-    // For now, keep empty registrations until we implement the builder
+    // Build sub-agents from configurations
     let mut registrations: Vec<SubAgentRegistration> = Vec::new();
+
+    // Build custom sub-agents from configs
+    for subagent_config in &config.subagent_configs {
+        // Determine the planner for this sub-agent
+        let sub_planner = if let Some(ref model) = subagent_config.model {
+            // Sub-agent has its own model - wrap it in a planner
+            Arc::new(LlmBackedPlanner::new(model.clone())) as Arc<dyn PlannerHandle>
+        } else {
+            // Inherit parent's planner
+            config.planner.clone()
+        };
+
+        // Create a DeepAgentConfig for this sub-agent
+        let mut sub_cfg = DeepAgentConfig::new(
+            subagent_config.instructions.clone(),
+            sub_planner,
+        );
+
+        // Configure tools
+        if let Some(ref tools) = subagent_config.tools {
+            for tool in tools {
+                sub_cfg = sub_cfg.with_tool(tool.clone());
+            }
+        }
+
+        // Configure built-in tools
+        if let Some(ref builtin) = subagent_config.builtin_tools {
+            sub_cfg = sub_cfg.with_builtin_tools(builtin.iter().cloned());
+        }
+
+        // Sub-agents should not have their own sub-agents
+        sub_cfg = sub_cfg.with_auto_general_purpose(false);
+
+        // Configure prompt caching
+        sub_cfg = sub_cfg.with_prompt_caching(subagent_config.enable_prompt_caching);
+
+        // Build the sub-agent recursively
+        let sub_agent = create_deep_agent_from_config(sub_cfg);
+
+        // Register the sub-agent
+        registrations.push(SubAgentRegistration {
+            descriptor: SubAgentDescriptor {
+                name: subagent_config.name.clone(),
+                description: subagent_config.description.clone(),
+            },
+            agent: Arc::new(sub_agent),
+        });
+    }
+
+    // Optionally inject a general-purpose subagent
     if config.auto_general_purpose {
         let has_gp = registrations
             .iter()

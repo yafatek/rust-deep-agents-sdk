@@ -14,7 +14,7 @@ use agents_core::state::AgentStateSnapshot;
 use agents_runtime::agent::SubAgentConfig;
 use agents_runtime::providers::OpenAiConfig;
 use agents_runtime::ConfigurableAgentBuilder;
-use agents_toolkit::{tool, ToolParameterSchema};
+use agents_toolkit::create_tool;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -146,10 +146,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create specialized subagents
-    let research_subagent = SubAgentConfig {
-        name: "research-agent".to_string(),
-        description: "Specialized researcher for conducting deep research on specific topics. Only give this researcher one topic at a time. For complex topics, break them down and call multiple research agents in parallel.".to_string(),
-        instructions: r#"You are a dedicated researcher. Your job is to conduct research based on the user's questions.
+    let research_subagent = SubAgentConfig::new(
+        "research-agent",
+        "Specialized researcher for conducting deep research on specific topics. Only give this researcher one topic at a time. For complex topics, break them down and call multiple research agents in parallel.",
+        r#"You are a dedicated researcher. Your job is to conduct research based on the user's questions.
 
 CRITICAL: When you need to search for information, respond ONLY with JSON in this exact format:
 
@@ -169,16 +169,14 @@ CRITICAL: When you need to search for information, respond ONLY with JSON in thi
 
 After gathering information through search, conduct thorough research and then reply to the user with a detailed answer to their question.
 
-IMPORTANT: Only your FINAL answer will be passed on to the user. They will have NO knowledge of anything except your final message, so your final report should be comprehensive and self-contained!"#.to_string(),
-        tools: Some(vec![internet_search.clone()]),
-        // todo: if will inherit from main agent why we pass it here? 
-        planner: None, // Will inherit from main agent
-    };
+IMPORTANT: Only your FINAL answer will be passed on to the user. They will have NO knowledge of anything except your final message, so your final report should be comprehensive and self-contained!"#
+    )
+    .with_tools(vec![internet_search.clone()]);
 
-    let critique_subagent = SubAgentConfig {
-        name: "critique-agent".to_string(),
-        description: "Expert editor for critiquing and improving research reports. Provides detailed feedback on structure, content, and quality.".to_string(),
-        instructions: r#"You are a dedicated editor. Your job is to critique research reports and provide detailed feedback.
+    let critique_subagent = SubAgentConfig::new(
+        "critique-agent",
+        "Expert editor for critiquing and improving research reports. Provides detailed feedback on structure, content, and quality.",
+        r#"You are a dedicated editor. Your job is to critique research reports and provide detailed feedback.
 
 You can find the report at `final_report.md` and the original question at `question.txt`.
 
@@ -208,10 +206,9 @@ CRITICAL: When you need to search, respond ONLY with JSON:
 }
 ```
 
-Provide detailed, actionable feedback to improve the report quality."#.to_string(),
-        tools: Some(vec![internet_search.clone()]),
-        planner: None,
-    };
+Provide detailed, actionable feedback to improve the report quality."#
+    )
+    .with_tools(vec![internet_search.clone()]);
 
     // Main orchestrator instructions (mirrors Python exactly)
     let main_instructions = r#"You are an expert researcher. Your job is to conduct thorough research, and then write a polished report.
