@@ -3,6 +3,14 @@ name = "agents-core"
 version = "0.0.1"
 edition = "2021"
 description = "Core traits, data models, and prompt primitives for building deep agents."
+authors = ["YAFATEK <hello@yafatek.dev>"]
+license = "MIT"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-core"
+keywords = ["ai", "agents", "llm", "automation"]
+categories = ["api-bindings", "development-tools"]
+readme = "../../README.md"
 
 [dependencies]
 anyhow = { workspace = true }

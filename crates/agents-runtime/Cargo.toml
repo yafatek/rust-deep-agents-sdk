@@ -3,10 +3,18 @@ name = "agents-runtime"
 version = "0.0.1"
 edition = "2021"
 description = "Async runtime orchestration for Rust deep agents."
+authors = ["YAFATEK <hello@yafatek.dev>"]
+license = "MIT"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-runtime"
+keywords = ["ai", "agents", "llm", "runtime", "async"]
+categories = ["api-bindings", "development-tools"]
+readme = "../../README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core" }
-agents-toolkit = { path = "../agents-toolkit" }
+agents-core = { path = "../agents-core", version = "0.0.1" }
+agents-toolkit = { path = "../agents-toolkit", version = "0.0.1" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde_json = { workspace = true }
@@ -15,6 +23,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tokio = { workspace = true }

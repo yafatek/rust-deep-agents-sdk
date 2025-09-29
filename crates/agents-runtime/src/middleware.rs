@@ -332,7 +332,7 @@ pub struct BaseSystemPromptMiddleware;
 #[async_trait]
 impl AgentMiddleware for BaseSystemPromptMiddleware {
     fn id(&self) -> &'static str {
-        "base-prompt"
+        "base-system-prompt"
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {

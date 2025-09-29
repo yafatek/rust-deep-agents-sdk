@@ -3,9 +3,17 @@ name = "agents-toolkit"
 version = "0.0.1"
 edition = "2021"
 description = "Reusable tools and utilities for Rust deep agents."
+authors = ["YAFATEK <hello@yafatek.dev>"]
+license = "MIT"
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-toolkit"
+keywords = ["ai", "agents", "llm", "tools", "utilities"]
+categories = ["api-bindings", "development-tools"]
+readme = "../../README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core" }
+agents-core = { path = "../agents-core", version = "0.0.1" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
