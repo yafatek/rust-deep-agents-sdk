@@ -76,23 +76,23 @@ jobs:
         # Update workspace dependency versions (format: , version = "0.0.1")
         sed -i 's/, version = "0.0.1"/, version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
     - name: Publish agents-core
-      run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-core to be available
       run: sleep 30
     - name: Publish agents-toolkit
-      run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-toolkit to be available
       run: sleep 30
     - name: Publish agents-runtime
-      run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-runtime to be available
       run: sleep 30
     - name: Publish agents-aws
-      run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
     - name: Wait for agents-aws to be available
       run: sleep 30
     - name: Publish agents-sdk (unified SDK)
-      run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
 
   create_release:
     needs: publish
