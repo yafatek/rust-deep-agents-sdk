@@ -4,8 +4,9 @@ members = [
     "crates/agents-runtime",
     "crates/agents-toolkit",
     "crates/agents-aws",
-    "examples/getting-started",
-    "examples/cli-agent", "examples/subagent-demo",
+    "examples/simple-agent",
+    "examples/deep-research-agent",
+    "examples/deep-agent-server",
 ]
 resolver = "2"
 

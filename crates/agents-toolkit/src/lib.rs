@@ -1,13 +1,15 @@
 //! Toolkit of default tools and helpers mirroring the Python reference implementation.
 //! Includes filesystem manipulation tools, todo list management, and planning scaffolds.
 
-pub mod adapters;
 pub mod filesystem;
+pub mod tools;
 pub mod todos;
+
+// Re-export helper functions for creating user tools (enhances existing system)
+pub use tools::{create_tool, create_sync_tool};
 
 pub use filesystem::{EditFileTool, LsTool, ReadFileTool, WriteFileTool};
 pub use todos::WriteTodosTool;
-
 use agents_core::agent::ToolResponse;
 use agents_core::messaging::{
     AgentMessage, MessageContent, MessageMetadata, MessageRole, ToolInvocation,

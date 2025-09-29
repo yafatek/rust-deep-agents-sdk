@@ -15,6 +15,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tokio = { workspace = true }
