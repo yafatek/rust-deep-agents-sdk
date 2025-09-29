@@ -1,28 +1,24 @@
 use agents_sdk::{
-    create_tool, get_default_model, state::AgentStateSnapshot, ConfigurableAgentBuilder,
+    get_default_model, state::AgentStateSnapshot, tool, ConfigurableAgentBuilder,
 };
-use serde_json::Value;
 use std::sync::Arc;
+
+// Define a tool using the #[tool] macro - clean and simple!
+#[tool("Greets a person by name")]
+fn greet(name: String) -> String {
+    format!("Hello, {}! 👋", name)
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!("🧪 Testing Unified Agents SDK");
+    println!("🧪 Testing Unified Agents SDK with #[tool] macro");
+    dotenv::dotenv().ok();
 
-    // Create a simple tool using the unified SDK
-    let greet_tool = create_tool(
-        "greet",
-        "Greets a person by name",
-        |args: Value| async move {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("World");
-            Ok(format!("Hello, {}! 👋", name))
-        },
-    );
-
-    // Build an agent using the unified SDK
+    // Build an agent using the macro-generated tool
     println!("🔧 Building agent with unified SDK...");
     let agent = ConfigurableAgentBuilder::new("You are a friendly assistant that greets people.")
         .with_model(get_default_model()?)
-        .with_tool(greet_tool)
+        .with_tool(GreetTool::as_tool())
         .build()?;
 
     // Test the agent
@@ -35,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     println!("✅ Agent Response: {:?}", response);
-    println!("🎉 Unified SDK test completed successfully!");
+    println!("🎉 Unified SDK test with #[tool] macro completed successfully!");
 
     Ok(())
 }

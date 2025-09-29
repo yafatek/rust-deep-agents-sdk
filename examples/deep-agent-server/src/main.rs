@@ -457,22 +457,21 @@ async fn create_research_agent() -> anyhow::Result<Arc<dyn agents_core::agent::A
     );
 
     // Create specialized subagents
-    let research_subagent = SubAgentConfig {
-        name: "research-agent".to_string(),
-        description: "Researcher with internet search".to_string(),
-        instructions: r#"You are a researcher. For any research task, first search the internet then provide a detailed answer.
+    let research_subagent = SubAgentConfig::new(
+        "research-agent",
+        "Researcher with internet search",
+        r#"You are a researcher. For any research task, first search the internet then provide a detailed answer.
 
 To search: {"tool_calls": [{"name": "internet_search", "args": {"query": "search terms", "max_results": 5}}]}
 
-Always search first, then provide comprehensive answers based on the results."#.to_string(),
-        tools: Some(vec![internet_search.clone()]),
-        planner: None,
-    };
+Always search first, then provide comprehensive answers based on the results."#
+    )
+    .with_tools(vec![internet_search.clone()]);
 
-    let critique_subagent = SubAgentConfig {
-        name: "critique-agent".to_string(),
-        description: "Expert editor for critiquing and improving content".to_string(),
-        instructions: r#"You are a dedicated editor. Provide detailed feedback on content quality.
+    let critique_subagent = SubAgentConfig::new(
+        "critique-agent",
+        "Expert editor for critiquing and improving content",
+        r#"You are a dedicated editor. Provide detailed feedback on content quality.
 
 Check for: structure, comprehensiveness, clarity, accuracy, and proper citations.
 
@@ -482,10 +481,8 @@ If you need additional information for better critique, use internet_search:
 ```
 
 Provide actionable feedback to improve content quality."#
-            .to_string(),
-        tools: Some(vec![internet_search.clone()]),
-        planner: None,
-    };
+    )
+    .with_tools(vec![internet_search.clone()]);
 
     // Main agent instructions - very explicit
     let main_instructions = r#"You MUST respond with JSON tool calls only. Never give text responses.

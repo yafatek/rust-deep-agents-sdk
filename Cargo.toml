@@ -5,10 +5,16 @@ members = [
     "crates/agents-toolkit",
     "crates/agents-aws",
     "crates/agents-sdk",
+    "crates/agents-macros",
+    "crates/agents-persistence",
     "examples/simple-agent",
     "examples/deep-research-agent",
     "examples/deep-agent-server",
     "examples/unified-sdk-test",
+    "examples/subagent-demo",
+    "examples/automotive-service-uae",
+    "examples/automotive-web-service",
+    "examples/checkpointer-demo",
 ]
 resolver = "2"
 
@@ -25,3 +31,5 @@ thiserror = "1"
 tracing = "0.1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures = "0.3"
+async-stream = "0.3"

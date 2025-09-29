@@ -31,6 +31,13 @@ impl MessageContent {
             _ => None,
         }
     }
+
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            MessageContent::Json(value) => Some(value),
+            _ => None,
+        }
+    }
 }
 
 /// Payload passed into tools when invoked by the runtime.

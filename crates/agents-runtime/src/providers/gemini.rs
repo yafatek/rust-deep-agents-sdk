@@ -150,14 +150,14 @@ mod tests {
 
     #[test]
     fn gemini_conversion_handles_system_prompt() {
-        let request = LlmRequest {
-            system_prompt: "You are concise".into(),
-            messages: vec![AgentMessage {
+        let request = LlmRequest::new(
+            "You are concise",
+            vec![AgentMessage {
                 role: MessageRole::User,
                 content: MessageContent::Text("Hello".into()),
                 metadata: None,
             }],
-        };
+        );
         let (contents, system) = to_gemini_contents(&request);
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].role, "user");

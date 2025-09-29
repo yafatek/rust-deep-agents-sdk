@@ -6,23 +6,26 @@
 use super::builder::ConfigurableAgentBuilder;
 use super::config::{CreateDeepAgentParams, DeepAgentConfig};
 use super::runtime::DeepAgent;
-use crate::providers::{AnthropicConfig, AnthropicMessagesModel};
+use crate::providers::{OpenAiChatModel, OpenAiConfig};
 use agents_core::llm::LanguageModel;
 use std::sync::Arc;
 
 /// Returns the default language model configured
-/// Uses Claude Sonnet 4 with 64000 max tokens, mirroring the Python SDK defaults.
-//todo: mograte this to OpenaI using gpt-5-mini
+/// Uses OpenAI GPT-4o-mini for cost-effective operation.
+/// This model provides excellent performance at a fraction of the cost compared to larger models.
+///
+/// Cost comparison:
+/// - GPT-4o-mini: $0.15/1M input tokens, $0.60/1M output tokens
+/// - Claude Sonnet 4: $3.00/1M input tokens, $15.00/1M output tokens
+/// = ~95% cost savings!
 pub fn get_default_model() -> anyhow::Result<Arc<dyn LanguageModel>> {
-    let config = AnthropicConfig {
-        api_key: std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY environment variable is required"))?,
-        model: "claude-sonnet-4-20250514".to_string(),
-        max_output_tokens: 64000,
+    let config = OpenAiConfig {
+        api_key: std::env::var("OPENAI_API_KEY")
+            .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?,
+        model: "gpt-4o-mini".to_string(),
         api_url: None,
-        api_version: None,
     };
-    let model: Arc<dyn LanguageModel> = Arc::new(AnthropicMessagesModel::new(config)?);
+    let model: Arc<dyn LanguageModel> = Arc::new(OpenAiChatModel::new(config)?);
     Ok(model)
 }
 
