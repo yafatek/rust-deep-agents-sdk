@@ -46,7 +46,8 @@ impl PlannerHandle for LlmBackedPlanner {
         context: PlannerContext,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<PlannerDecision> {
-        let request = LlmRequest::new(context.system_prompt.clone(), context.history.clone());
+        let request = LlmRequest::new(context.system_prompt.clone(), context.history.clone())
+            .with_tools(context.tools.clone());
         let response = self.model.generate(request).await?;
         let message = response.message;
 
@@ -178,6 +179,7 @@ mod tests {
                 metadata: None,
             }],
             system_prompt: "Be helpful".into(),
+            tools: vec![],
         };
 
         let decision = planner
@@ -227,6 +229,7 @@ mod tests {
                 PlannerContext {
                     history: vec![],
                     system_prompt: "System".into(),
+                    tools: vec![],
                 },
                 Arc::new(AgentStateSnapshot::default()),
             )

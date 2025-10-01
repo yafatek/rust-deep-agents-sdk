@@ -2,9 +2,25 @@
 //!
 //! This crate provides:
 //! - Built-in tools (filesystem, todos, etc.)
-//! - Tool builder utilities for creating custom tools
+//! - `#[tool]` macro for automatic tool generation
+//! - Tool builder utilities for advanced custom tools
 //! - Tool registration and management helpers
-//! - Procedural macros for automatic tool schema generation
+//!
+//! ## Recommended Usage
+//!
+//! Use the `#[tool]` macro to define tools:
+//!
+//! ```rust
+//! use agents_macros::tool;
+//!
+//! #[tool("Adds two numbers together")]
+//! pub fn add(a: i32, b: i32) -> i32 {
+//!     a + b
+//! }
+//!
+//! // Use it:
+//! let tool = AddTool::as_tool();
+//! ```
 
 pub mod builder;
 pub mod builtin;
@@ -14,10 +30,10 @@ pub use agents_core::tools::{
     Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
 };
 
-// Re-export builder utilities
-pub use builder::{create_tool, tool, tool_sync, ToolBuilder};
+// Re-export builder utilities (advanced use cases)
+pub use builder::{tool, tool_sync, ToolBuilder};
 
-// Re-export procedural macros
+// Re-export the #[tool] macro - this is the recommended way to define tools
 pub use agents_macros::tool;
 
 // Re-export built-in tools
