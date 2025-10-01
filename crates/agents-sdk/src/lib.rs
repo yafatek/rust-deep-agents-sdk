@@ -13,26 +13,20 @@
 //! ```rust,no_run
 //! # #[cfg(feature = "toolkit")]
 //! # {
-//! use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
-//! use serde_json::Value;
+//! use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig};
+//! use agents_core::persistence::InMemoryCheckpointer;
+//! use std::sync::Arc;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//!     // Create a simple tool
-//!     let my_tool = create_tool(
-//!         "greet",
-//!         "Greets a person by name",
-//!         |args: Value| async move {
-//!             let name = args.get("name")
-//!                 .and_then(|v| v.as_str())
-//!                 .unwrap_or("World");
-//!             Ok(format!("Hello, {}!", name))
-//!         }
+//!     let config = OpenAiConfig::new(
+//!         std::env::var("OPENAI_API_KEY")?,
+//!         "gpt-4o-mini"
 //!     );
 //!
-//!     // Build an agent with the default model
+//!     // Build an agent
 //!     let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
-//!         .with_model(get_default_model()?)
-//!         .with_tool(my_tool)
+//!         .with_openai_chat(config)?
+//!         .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))
 //!         .build()?;
 //!
 //!     // Use the agent

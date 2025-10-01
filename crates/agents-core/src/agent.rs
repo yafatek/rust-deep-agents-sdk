@@ -53,6 +53,8 @@ pub enum PlannerAction {
 pub struct PlannerContext {
     pub history: Vec<AgentMessage>,
     pub system_prompt: String,
+    #[serde(default)]
+    pub tools: Vec<crate::tools::ToolSchema>,
 }
 
 /// Type alias for a stream of agent response chunks
