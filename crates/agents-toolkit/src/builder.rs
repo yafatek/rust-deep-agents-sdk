@@ -122,7 +122,6 @@ where
         .build_sync(handler)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

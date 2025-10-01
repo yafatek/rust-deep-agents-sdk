@@ -192,7 +192,7 @@ impl LanguageModel for AnthropicMessagesModel {
             .error_for_status()?;
 
         let data: AnthropicResponse = response.json().await?;
-        
+
         // Check if response contains tool_use blocks
         let tool_uses: Vec<_> = data
             .content
@@ -212,10 +212,7 @@ impl LanguageModel for AnthropicMessagesModel {
                 })
                 .collect();
 
-            tracing::debug!(
-                "Anthropic response contains {} tool uses",
-                tool_calls.len()
-            );
+            tracing::debug!("Anthropic response contains {} tool uses", tool_calls.len());
 
             return Ok(LlmResponse {
                 message: AgentMessage {

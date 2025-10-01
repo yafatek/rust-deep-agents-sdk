@@ -265,10 +265,7 @@ impl LanguageModel for OpenAiChatModel {
                 })
                 .collect();
 
-            tracing::debug!(
-                "OpenAI response contains {} tool calls",
-                tool_calls.len()
-            );
+            tracing::debug!("OpenAI response contains {} tool calls", tool_calls.len());
 
             return Ok(LlmResponse {
                 message: AgentMessage {
@@ -282,10 +279,7 @@ impl LanguageModel for OpenAiChatModel {
         }
 
         // Regular text response
-        let content = choice
-            .message
-            .content
-            .unwrap_or_else(|| "".to_string());
+        let content = choice.message.content.unwrap_or_else(|| "".to_string());
 
         Ok(LlmResponse {
             message: AgentMessage {

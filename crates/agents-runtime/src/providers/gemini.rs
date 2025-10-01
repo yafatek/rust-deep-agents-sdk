@@ -146,13 +146,19 @@ impl LanguageModel for GeminiChatModel {
     async fn generate(&self, request: LlmRequest) -> anyhow::Result<LlmResponse> {
         let (contents, system_instruction) = to_gemini_contents(&request);
         let tools = to_gemini_tools(&request.tools);
-        
+
         // Debug logging (before moving contents)
         tracing::debug!(
             "Gemini request: model={}, contents={}, tools={}",
             self.config.model,
             contents.len(),
-            tools.as_ref().map(|t| t.iter().map(|td| td.function_declarations.len()).sum::<usize>()).unwrap_or(0)
+            tools
+                .as_ref()
+                .map(|t| t
+                    .iter()
+                    .map(|td| td.function_declarations.len())
+                    .sum::<usize>())
+                .unwrap_or(0)
         );
 
         let body = GeminiRequest {
@@ -180,7 +186,7 @@ impl LanguageModel for GeminiChatModel {
             .error_for_status()?;
 
         let data: GeminiResponse = response.json().await?;
-        
+
         // Check if response contains function calls
         let function_calls: Vec<_> = data
             .candidates

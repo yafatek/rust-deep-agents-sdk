@@ -23,26 +23,35 @@ pub fn register_vehicle(
 ) -> String {
     tracing::warn!("🚗 TOOL CALLED: Registering vehicle");
     tracing::warn!("   Customer ID: {}", customer_id);
-    tracing::warn!("   Vehicle: {} {} {}", vehicle_year.unwrap_or(0), vehicle_make, vehicle_model);
-    
+    tracing::warn!(
+        "   Vehicle: {} {} {}",
+        vehicle_year.unwrap_or(0),
+        vehicle_make,
+        vehicle_model
+    );
+
     let result = format!(
         "✅ Vehicle registered successfully: {} {} {} for customer {}",
-        vehicle_year.map(|y| y.to_string()).unwrap_or_else(|| "Unknown year".to_string()),
+        vehicle_year
+            .map(|y| y.to_string())
+            .unwrap_or_else(|| "Unknown year".to_string()),
         vehicle_make,
         vehicle_model,
         customer_id
     );
-    
+
     tracing::warn!("✅ TOOL RESULT: {}", result);
     result
 }
 
 /// Tool to search the web
-#[tool("Search the internet for information. Use this when you need current or factual information.")]
+#[tool(
+    "Search the internet for information. Use this when you need current or factual information."
+)]
 pub fn web_search(query: String, max_results: Option<u32>) -> String {
     tracing::warn!("🔍 TOOL CALLED: web_search(\"{}\")", query);
     let max = max_results.unwrap_or(5);
-    
+
     // Mock search results
     let result = format!(
         "Found {} results for \"{}\"\n\
@@ -51,7 +60,7 @@ pub fn web_search(query: String, max_results: Option<u32>) -> String {
         3. Latest updates regarding {}",
         max, query, query, query, query
     );
-    
+
     tracing::warn!("✅ TOOL RESULT: {} results found", max);
     result
 }
@@ -61,8 +70,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
         )
         .init();
 
@@ -77,7 +85,8 @@ async fn main() -> anyhow::Result<()> {
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?;
 
-    println!("✅ OpenAI API key loaded: {}...{}", 
+    println!(
+        "✅ OpenAI API key loaded: {}...{}",
         &api_key[..std::cmp::min(8, api_key.len())],
         &api_key[api_key.len().saturating_sub(4)..]
     );
@@ -119,11 +128,11 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     // Test 1: Math tool
     println!("📝 TEST 1: Math Tool");
     println!("{}", "-".repeat(60));
-    
+
     let tools = vec![AddNumbersTool::as_tool()];
     let openai_config = OpenAiConfig::new(api_key.clone(), "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
-    
+
     let agent = ConfigurableAgentBuilder::new(system_prompt)
         .with_openai_chat(openai_config)?
         .with_tools(tools)
@@ -132,7 +141,7 @@ IMPORTANT: You MUST use tools when appropriate. For example:
 
     let test1 = "What is 25 + 17?";
     println!("👤 User: {}", test1);
-    
+
     let state = Arc::new(AgentStateSnapshot::default());
     let response1 = agent.handle_message(test1, state).await?;
 
@@ -151,7 +160,7 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     let tools = vec![RegisterVehicleTool::as_tool()];
     let openai_config = OpenAiConfig::new(api_key.clone(), "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
-    
+
     let agent = ConfigurableAgentBuilder::new(system_prompt)
         .with_openai_chat(openai_config)?
         .with_tools(tools)
@@ -179,7 +188,7 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     let tools = vec![WebSearchTool::as_tool()];
     let openai_config = OpenAiConfig::new(api_key, "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
-    
+
     let agent = ConfigurableAgentBuilder::new(system_prompt)
         .with_openai_chat(openai_config)?
         .with_tools(tools)
