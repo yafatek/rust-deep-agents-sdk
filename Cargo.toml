@@ -7,14 +7,17 @@ members = [
     "crates/agents-sdk",
     "crates/agents-macros",
     "crates/agents-persistence",
-    "examples/simple-agent",
-    "examples/deep-research-agent",
-    "examples/deep-agent-server",
+    # "examples/simple-agent",  # TODO: Update to use #[tool] macro
+    # "examples/deep-research-agent",  # TODO: Update to use #[tool] macro
+    # "examples/deep-agent-server",  # TODO: Update to use #[tool] macro
     "examples/unified-sdk-test",
     "examples/subagent-demo",
     "examples/automotive-service-uae",
     "examples/automotive-web-service",
-    "examples/checkpointer-demo",
+    # "examples/checkpointer-demo",  # TODO: Update to use #[tool] macro
+    "examples/tool-test",
+    "examples/anthropic-tools-test",
+    "examples/gemini-tools-test",
 ]
 resolver = "2"
 

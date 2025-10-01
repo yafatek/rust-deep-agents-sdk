@@ -867,9 +867,11 @@ impl DeepAgent {
             middleware.modify_model_request(&mut ctx).await?;
         }
 
+        let tool_schemas: Vec<_> = tools.values().map(|t| t.schema()).collect();
         let context = PlannerContext {
             history: request.messages.clone(),
             system_prompt: request.system_prompt.clone(),
+            tools: tool_schemas,
         };
         let state_snapshot = Arc::new(self.state.read().map(|s| s.clone()).unwrap_or_default());
 

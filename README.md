@@ -48,45 +48,81 @@ agents-aws = "0.0.1"       # AWS integrations (optional)
 
 ## Quick Start
 
-### Using the Published Crates
+### Basic Agent with Tools
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, get_default_model, create_tool};
-use serde_json::Value;
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig};
+use agents_macros::tool;
+use std::sync::Arc;
+
+// Define a tool using the #[tool] macro - it's that simple!
+#[tool("Adds two numbers together")]
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Create a simple tool
-    let my_tool = create_tool(
-        "greet",
-        "Greets a person by name",
-        |args: Value| async move {
-            let name = args.get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("World");
-            Ok(format!("Hello, {}!", name))
-        }
+    // Configure OpenAI
+    let config = OpenAiConfig::new(
+        std::env::var("OPENAI_API_KEY")?,
+        "gpt-4o-mini"
     );
 
-    // Build an agent with the default Claude model
-    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
-        .with_model(get_default_model())
-        .with_tool(my_tool)
-        .build()
-        .await?;
+    // Build an agent with tools
+    let agent = ConfigurableAgentBuilder::new("You are a helpful math assistant.")
+        .with_openai_chat(config)?
+        .with_tool(AddTool::as_tool())  // Tool name is auto-generated
+        .build()?;
 
     // Use the agent
     use agents_sdk::state::AgentStateSnapshot;
-    use std::sync::Arc;
-
+    
     let response = agent.handle_message(
-        "Please greet Alice using the greet tool",
+        "What is 5 + 3?",
         Arc::new(AgentStateSnapshot::default())
     ).await?;
-    println!("{:?}", response);
+    
+    println!("{}", response.content.as_text().unwrap_or("No response"));
 
     Ok(())
 }
+```
+
+### Defining Tools
+
+The `#[tool]` macro automatically generates the schema and wrapper code:
+
+```rust
+use agents_macros::tool;
+
+// Simple tool
+#[tool("Multiplies two numbers")]
+fn multiply(a: f64, b: f64) -> f64 {
+    a * b
+}
+
+// Async tool
+#[tool("Fetches user data from API")]
+async fn get_user(user_id: String) -> String {
+    // Make API call...
+    format!("User {}", user_id)
+}
+
+// Tool with optional parameters
+#[tool("Searches with optional filters")]
+fn search(query: String, max_results: Option<u32>) -> Vec<String> {
+    let limit = max_results.unwrap_or(10);
+    // Perform search...
+    vec![]
+}
+
+// Use the tools:
+let tools = vec![
+    MultiplyTool::as_tool(),
+    GetUserTool::as_tool(),
+    SearchTool::as_tool(),
+];
 ```
 
 ### Using Persistence Backends

@@ -1,8 +1,10 @@
 use agents_core::llm::{LanguageModel, LlmRequest, LlmResponse};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
+use agents_core::tools::ToolSchema;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone)]
 pub struct GeminiConfig {
@@ -32,6 +34,20 @@ struct GeminiRequest {
     contents: Vec<GeminiContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system_instruction: Option<GeminiContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<GeminiToolDeclaration>>,
+}
+
+#[derive(Clone, Serialize)]
+struct GeminiToolDeclaration {
+    function_declarations: Vec<GeminiFunctionDeclaration>,
+}
+
+#[derive(Clone, Serialize)]
+struct GeminiFunctionDeclaration {
+    name: String,
+    description: String,
+    parameters: Value,
 }
 
 #[derive(Serialize)]
@@ -63,6 +79,14 @@ struct GeminiContentResponse {
 #[derive(Deserialize)]
 struct GeminiPartResponse {
     text: Option<String>,
+    #[serde(rename = "functionCall")]
+    function_call: Option<GeminiFunctionCall>,
+}
+
+#[derive(Deserialize)]
+struct GeminiFunctionCall {
+    name: String,
+    args: Value,
 }
 
 fn to_gemini_contents(request: &LlmRequest) -> (Vec<GeminiContent>, Option<GeminiContent>) {
@@ -98,13 +122,43 @@ fn to_gemini_contents(request: &LlmRequest) -> (Vec<GeminiContent>, Option<Gemin
     (contents, system_instruction)
 }
 
+/// Convert tool schemas to Gemini function declarations format
+fn to_gemini_tools(tools: &[ToolSchema]) -> Option<Vec<GeminiToolDeclaration>> {
+    if tools.is_empty() {
+        return None;
+    }
+
+    Some(vec![GeminiToolDeclaration {
+        function_declarations: tools
+            .iter()
+            .map(|tool| GeminiFunctionDeclaration {
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                parameters: serde_json::to_value(&tool.parameters)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+            })
+            .collect(),
+    }])
+}
+
 #[async_trait]
 impl LanguageModel for GeminiChatModel {
     async fn generate(&self, request: LlmRequest) -> anyhow::Result<LlmResponse> {
         let (contents, system_instruction) = to_gemini_contents(&request);
+        let tools = to_gemini_tools(&request.tools);
+        
+        // Debug logging (before moving contents)
+        tracing::debug!(
+            "Gemini request: model={}, contents={}, tools={}",
+            self.config.model,
+            contents.len(),
+            tools.as_ref().map(|t| t.iter().map(|td| td.function_declarations.len()).sum::<usize>()).unwrap_or(0)
+        );
+
         let body = GeminiRequest {
             contents,
             system_instruction,
+            tools,
         };
 
         let base_url = self
@@ -126,6 +180,45 @@ impl LanguageModel for GeminiChatModel {
             .error_for_status()?;
 
         let data: GeminiResponse = response.json().await?;
+        
+        // Check if response contains function calls
+        let function_calls: Vec<_> = data
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.content.as_ref())
+            .flat_map(|content| &content.parts)
+            .filter_map(|part| part.function_call.as_ref())
+            .collect();
+
+        if !function_calls.is_empty() {
+            // Convert Gemini functionCall format to our JSON format
+            let tool_calls: Vec<_> = function_calls
+                .iter()
+                .map(|fc| {
+                    serde_json::json!({
+                        "name": fc.name,
+                        "args": fc.args
+                    })
+                })
+                .collect();
+
+            tracing::debug!(
+                "Gemini response contains {} function calls",
+                tool_calls.len()
+            );
+
+            return Ok(LlmResponse {
+                message: AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Json(serde_json::json!({
+                        "tool_calls": tool_calls
+                    })),
+                    metadata: None,
+                },
+            });
+        }
+
+        // Regular text response
         let text = data
             .candidates
             .into_iter()

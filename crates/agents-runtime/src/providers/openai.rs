@@ -1,5 +1,6 @@
 use agents_core::llm::{ChunkStream, LanguageModel, LlmRequest, LlmResponse, StreamChunk};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageRole};
+use agents_core::tools::ToolSchema;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
 use reqwest::Client;
@@ -50,12 +51,28 @@ struct ChatRequest<'a> {
     messages: &'a [OpenAiMessage],
     #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<OpenAiTool>>,
 }
 
 #[derive(Serialize)]
 struct OpenAiMessage {
     role: &'static str,
     content: String,
+}
+
+#[derive(Clone, Serialize)]
+struct OpenAiTool {
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: OpenAiFunction,
+}
+
+#[derive(Clone, Serialize)]
+struct OpenAiFunction {
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
 }
 
 #[derive(Deserialize)]
@@ -70,7 +87,25 @@ struct Choice {
 
 #[derive(Deserialize)]
 struct ChoiceMessage {
-    content: String,
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<OpenAiToolCall>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiToolCall {
+    #[allow(dead_code)]
+    id: String,
+    #[serde(rename = "type")]
+    #[allow(dead_code)]
+    tool_type: String,
+    function: OpenAiFunctionCall,
+}
+
+#[derive(Deserialize)]
+struct OpenAiFunctionCall {
+    name: String,
+    arguments: String,
 }
 
 // Streaming response structures
@@ -129,14 +164,39 @@ fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
     messages
 }
 
+/// Convert tool schemas to OpenAI function calling format
+fn to_openai_tools(tools: &[ToolSchema]) -> Option<Vec<OpenAiTool>> {
+    if tools.is_empty() {
+        return None;
+    }
+
+    Some(
+        tools
+            .iter()
+            .map(|tool| OpenAiTool {
+                tool_type: "function".to_string(),
+                function: OpenAiFunction {
+                    name: tool.name.clone(),
+                    description: tool.description.clone(),
+                    parameters: serde_json::to_value(&tool.parameters)
+                        .unwrap_or_else(|_| serde_json::json!({})),
+                },
+            })
+            .collect(),
+    )
+}
+
 #[async_trait]
 impl LanguageModel for OpenAiChatModel {
     async fn generate(&self, request: LlmRequest) -> anyhow::Result<LlmResponse> {
         let messages = to_openai_messages(&request);
+        let tools = to_openai_tools(&request.tools);
+
         let body = ChatRequest {
             model: &self.config.model,
             messages: &messages,
             stream: None,
+            tools: tools.clone(),
         };
         let url = self
             .config
@@ -146,9 +206,10 @@ impl LanguageModel for OpenAiChatModel {
 
         // Debug logging
         tracing::debug!(
-            "OpenAI request: model={}, messages={}",
+            "OpenAI request: model={}, messages={}, tools={}",
             self.config.model,
-            messages.len()
+            messages.len(),
+            tools.as_ref().map(|t| t.len()).unwrap_or(0)
         );
         for (i, msg) in messages.iter().enumerate() {
             tracing::debug!(
@@ -188,10 +249,48 @@ impl LanguageModel for OpenAiChatModel {
             .next()
             .ok_or_else(|| anyhow::anyhow!("OpenAI response missing choices"))?;
 
+        // Handle tool calls if present
+        if !choice.message.tool_calls.is_empty() {
+            // Convert OpenAI tool_calls format to our JSON format
+            let tool_calls: Vec<_> = choice
+                .message
+                .tool_calls
+                .iter()
+                .map(|tc| {
+                    serde_json::json!({
+                        "name": tc.function.name,
+                        "args": serde_json::from_str::<serde_json::Value>(&tc.function.arguments)
+                            .unwrap_or_else(|_| serde_json::json!({}))
+                    })
+                })
+                .collect();
+
+            tracing::debug!(
+                "OpenAI response contains {} tool calls",
+                tool_calls.len()
+            );
+
+            return Ok(LlmResponse {
+                message: AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Json(serde_json::json!({
+                        "tool_calls": tool_calls
+                    })),
+                    metadata: None,
+                },
+            });
+        }
+
+        // Regular text response
+        let content = choice
+            .message
+            .content
+            .unwrap_or_else(|| "".to_string());
+
         Ok(LlmResponse {
             message: AgentMessage {
                 role: MessageRole::Agent,
-                content: MessageContent::Text(choice.message.content),
+                content: MessageContent::Text(content),
                 metadata: None,
             },
         })
@@ -199,10 +298,13 @@ impl LanguageModel for OpenAiChatModel {
 
     async fn generate_stream(&self, request: LlmRequest) -> anyhow::Result<ChunkStream> {
         let messages = to_openai_messages(&request);
+        let tools = to_openai_tools(&request.tools);
+
         let body = ChatRequest {
             model: &self.config.model,
             messages: &messages,
             stream: Some(true),
+            tools,
         };
         let url = self
             .config
@@ -211,9 +313,10 @@ impl LanguageModel for OpenAiChatModel {
             .unwrap_or("https://api.openai.com/v1/chat/completions");
 
         tracing::debug!(
-            "OpenAI streaming request: model={}, messages={}",
+            "OpenAI streaming request: model={}, messages={}, tools={}",
             self.config.model,
-            messages.len()
+            messages.len(),
+            request.tools.len()
         );
 
         let response = self

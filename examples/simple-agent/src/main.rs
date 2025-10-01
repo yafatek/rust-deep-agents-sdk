@@ -23,7 +23,7 @@ use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
 use agents_runtime::providers::OpenAiConfig;
 use agents_runtime::ConfigurableAgentBuilder;
-use agents_toolkit::create_tool;
+use agents_macros::tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -109,37 +109,22 @@ async fn main() -> anyhow::Result<()> {
     println!("🦀 Rust Deep Agents SDK - Simple Example");
     println!("=========================================");
 
-    // Create tools using simple functions (mirrors Python: tools=[internet_search])
-    // Just like Python, we define a regular function and the SDK handles the rest!
-    let internet_search = create_tool(
-        "internet_search",
-        "Search the internet for information on any topic using Tavily API",
-        |args: Value| async move {
-            let query = args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("default query");
-
-            let max_results = args
-                .get("max_results")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as u32);
-
-            // Call real Tavily search API
-            match call_tavily_search(query, max_results).await {
-                Ok(results) => Ok(results),
-                Err(e) => {
-                    // Fallback to a helpful error message
-                    Ok(format!(
-                        "❌ Search failed: {}. Please check your TAVILY_API_KEY environment variable.",
-                        e
-                    ))
-                }
+    // Define tools using #[tool] macro - just like Python, it's that simple!
+    #[tool("Search the internet for information on any topic using Tavily API")]
+    async fn internet_search(query: String, max_results: Option<u32>) -> String {
+        // Call real Tavily search API
+        match call_tavily_search(&query, max_results).await {
+            Ok(results) => results,
+            Err(e) => {
+                format!(
+                    "❌ Search failed: {}. Please check your TAVILY_API_KEY environment variable.",
+                    e
+                )
             }
-        },
-    );
+        }
+    }
 
-    let tools = vec![internet_search];
+    let tools = vec![InternetSearchTool::as_tool()];
     let instructions = "You are an expert researcher. Your job is to conduct thorough research, and then write a polished report.
 
 You have access to tools that you can call to gather information. 
