@@ -20,7 +20,7 @@
 use agents_core::persistence::{Checkpointer, InMemoryCheckpointer};
 use agents_core::state::AgentStateSnapshot;
 use agents_runtime::{ConfigurableAgentBuilder, OpenAiConfig};
-use agents_sdk::create_tool;
+use agents_macros::tool;
 use clap::Parser;
 use serde_json::Value;
 use std::sync::Arc;

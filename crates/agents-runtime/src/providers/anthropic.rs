@@ -79,6 +79,10 @@ struct AnthropicResponseBlock {
     #[serde(rename = "type")]
     kind: String,
     text: Option<String>,
+    #[allow(dead_code)]
+    id: Option<String>,
+    name: Option<String>,
+    input: Option<Value>,
 }
 
 fn to_anthropic_messages(request: &LlmRequest) -> (String, Vec<AnthropicMessage>) {
@@ -154,6 +158,14 @@ impl LanguageModel for AnthropicMessagesModel {
         let (system_prompt, messages) = to_anthropic_messages(&request);
         let tools = to_anthropic_tools(&request.tools);
 
+        // Debug logging
+        tracing::debug!(
+            "Anthropic request: model={}, messages={}, tools={}",
+            self.config.model,
+            messages.len(),
+            tools.as_ref().map(|t| t.len()).unwrap_or(0)
+        );
+
         let body = AnthropicRequest {
             model: self.config.model.clone(),
             max_tokens: self.config.max_output_tokens,
@@ -180,6 +192,43 @@ impl LanguageModel for AnthropicMessagesModel {
             .error_for_status()?;
 
         let data: AnthropicResponse = response.json().await?;
+        
+        // Check if response contains tool_use blocks
+        let tool_uses: Vec<_> = data
+            .content
+            .iter()
+            .filter(|block| block.kind == "tool_use")
+            .collect();
+
+        if !tool_uses.is_empty() {
+            // Convert Anthropic tool_use format to our JSON format
+            let tool_calls: Vec<_> = tool_uses
+                .iter()
+                .filter_map(|block| {
+                    Some(serde_json::json!({
+                        "name": block.name.as_ref()?,
+                        "args": block.input.as_ref()?
+                    }))
+                })
+                .collect();
+
+            tracing::debug!(
+                "Anthropic response contains {} tool uses",
+                tool_calls.len()
+            );
+
+            return Ok(LlmResponse {
+                message: AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Json(serde_json::json!({
+                        "tool_calls": tool_calls
+                    })),
+                    metadata: None,
+                },
+            });
+        }
+
+        // Regular text response
         let text = data
             .content
             .into_iter()
