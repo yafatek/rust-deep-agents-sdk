@@ -18,14 +18,12 @@ pub fn divide(a: f64, b: f64) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("warn")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("warn").init();
 
     dotenv::dotenv().ok();
 
-    let api_key = std::env::var("GEMINI_API_KEY")
-        .map_err(|_| anyhow::anyhow!("GEMINI_API_KEY not found"))?;
+    let api_key =
+        std::env::var("GEMINI_API_KEY").map_err(|_| anyhow::anyhow!("GEMINI_API_KEY not found"))?;
 
     println!("🤖 Testing Gemini Tool Support");
     println!("==============================\n");
@@ -76,4 +74,3 @@ When you need to use a tool, respond with JSON:
 
     Ok(())
 }
-

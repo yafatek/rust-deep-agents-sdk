@@ -14,9 +14,7 @@ pub fn multiply(a: i32, b: i32) -> i32 {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("warn")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("warn").init();
 
     dotenv::dotenv().ok();
 
@@ -74,4 +72,3 @@ When you need to use a tool, respond with JSON:
 
     Ok(())
 }
-
