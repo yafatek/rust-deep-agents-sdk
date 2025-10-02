@@ -1,3 +1,4 @@
+use crate::hitl::AgentInterrupt;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -7,6 +8,10 @@ pub struct AgentStateSnapshot {
     pub todos: Vec<TodoItem>,
     pub files: BTreeMap<String, String>,
     pub scratchpad: BTreeMap<String, serde_json::Value>,
+
+    /// Pending interrupts awaiting human response
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_interrupts: Vec<AgentInterrupt>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +38,21 @@ impl TodoItem {
 }
 
 impl AgentStateSnapshot {
+    /// Add an interrupt to the pending interrupts list.
+    pub fn add_interrupt(&mut self, interrupt: AgentInterrupt) {
+        self.pending_interrupts.push(interrupt);
+    }
+
+    /// Clear all pending interrupts.
+    pub fn clear_interrupts(&mut self) {
+        self.pending_interrupts.clear();
+    }
+
+    /// Check if there are any pending interrupts.
+    pub fn has_pending_interrupts(&self) -> bool {
+        !self.pending_interrupts.is_empty()
+    }
+
     /// Merge another state snapshot into this one using reducer logic.
     pub fn merge(&mut self, other: AgentStateSnapshot) {
         // Files reducer: merge dictionaries (equivalent to {**l, **r})
@@ -45,6 +65,11 @@ impl AgentStateSnapshot {
 
         // Scratchpad reducer: merge dictionaries
         self.scratchpad.extend(other.scratchpad);
+
+        // Interrupts reducer: replace with other if not empty, otherwise keep current
+        if !other.pending_interrupts.is_empty() {
+            self.pending_interrupts = other.pending_interrupts;
+        }
     }
 
     /// File reducer function matching Python's file_reducer behavior.
@@ -229,5 +254,141 @@ mod tests {
         // Should preserve existing todos when new list is empty
         assert_eq!(result.todos.len(), 1);
         assert_eq!(result.todos[0].content, "existing_task");
+    }
+
+    #[test]
+    fn test_add_interrupt() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state = AgentStateSnapshot::default();
+        assert!(!state.has_pending_interrupts());
+
+        let interrupt = AgentInterrupt::HumanInLoop(HitlInterrupt::new(
+            "test_tool",
+            json!({"arg": "value"}),
+            "call_123",
+            Some("Test note".to_string()),
+        ));
+
+        state.add_interrupt(interrupt);
+
+        assert!(state.has_pending_interrupts());
+        assert_eq!(state.pending_interrupts.len(), 1);
+    }
+
+    #[test]
+    fn test_clear_interrupts() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state = AgentStateSnapshot::default();
+
+        let interrupt = AgentInterrupt::HumanInLoop(HitlInterrupt::new(
+            "test_tool",
+            json!({}),
+            "call_123",
+            None,
+        ));
+
+        state.add_interrupt(interrupt);
+        assert!(state.has_pending_interrupts());
+
+        state.clear_interrupts();
+        assert!(!state.has_pending_interrupts());
+        assert_eq!(state.pending_interrupts.len(), 0);
+    }
+
+    #[test]
+    fn test_multiple_interrupts() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state = AgentStateSnapshot::default();
+
+        let interrupt1 =
+            AgentInterrupt::HumanInLoop(HitlInterrupt::new("tool1", json!({}), "call_1", None));
+
+        let interrupt2 =
+            AgentInterrupt::HumanInLoop(HitlInterrupt::new("tool2", json!({}), "call_2", None));
+
+        state.add_interrupt(interrupt1);
+        state.add_interrupt(interrupt2);
+
+        assert_eq!(state.pending_interrupts.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_with_interrupts() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state1 = AgentStateSnapshot::default();
+        let interrupt1 =
+            AgentInterrupt::HumanInLoop(HitlInterrupt::new("tool1", json!({}), "call_1", None));
+        state1.add_interrupt(interrupt1);
+
+        let mut state2 = AgentStateSnapshot::default();
+        let interrupt2 =
+            AgentInterrupt::HumanInLoop(HitlInterrupt::new("tool2", json!({}), "call_2", None));
+        state2.add_interrupt(interrupt2);
+
+        state1.merge(state2);
+
+        // Should replace with state2's interrupts (not empty)
+        assert_eq!(state1.pending_interrupts.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_empty_interrupts_preserves_existing() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state1 = AgentStateSnapshot::default();
+        let interrupt =
+            AgentInterrupt::HumanInLoop(HitlInterrupt::new("tool1", json!({}), "call_1", None));
+        state1.add_interrupt(interrupt);
+
+        let state2 = AgentStateSnapshot::default(); // Empty interrupts
+
+        state1.merge(state2);
+
+        // Should preserve original interrupts since new ones are empty
+        assert_eq!(state1.pending_interrupts.len(), 1);
+    }
+
+    #[test]
+    fn test_state_serialization_with_interrupts() {
+        use crate::hitl::{AgentInterrupt, HitlInterrupt};
+        use serde_json::json;
+
+        let mut state = AgentStateSnapshot::default();
+        let interrupt = AgentInterrupt::HumanInLoop(HitlInterrupt::new(
+            "test_tool",
+            json!({"arg": "value"}),
+            "call_123",
+            Some("Test note".to_string()),
+        ));
+        state.add_interrupt(interrupt);
+
+        // Serialize
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("pending_interrupts"));
+        assert!(json.contains("test_tool"));
+
+        // Deserialize
+        let deserialized: AgentStateSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.pending_interrupts.len(), 1);
+    }
+
+    #[test]
+    fn test_state_serialization_without_interrupts() {
+        let state = AgentStateSnapshot::default();
+
+        // Serialize
+        let json = serde_json::to_string(&state).unwrap();
+
+        // Should not include pending_interrupts field when empty (skip_serializing_if)
+        assert!(!json.contains("pending_interrupts"));
     }
 }

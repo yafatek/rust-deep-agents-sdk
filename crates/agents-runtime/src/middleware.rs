@@ -69,6 +69,30 @@ pub trait AgentMiddleware: Send + Sync {
 
     /// Apply middleware-specific mutations to the pending model request.
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()>;
+
+    /// Hook called before tool execution - can return an interrupt to pause execution.
+    ///
+    /// This hook is invoked for each tool call before it executes, allowing middleware
+    /// to intercept and pause execution for human review. If an interrupt is returned,
+    /// the agent will save its state and wait for human approval before continuing.
+    ///
+    /// # Arguments
+    /// * `tool_name` - Name of the tool about to be executed
+    /// * `tool_args` - Arguments that will be passed to the tool
+    /// * `call_id` - Unique identifier for this tool call
+    ///
+    /// # Returns
+    /// * `Ok(Some(interrupt))` - Pause execution and wait for human response
+    /// * `Ok(None)` - Continue with tool execution normally
+    /// * `Err(e)` - Error occurred during interrupt check
+    async fn before_tool_execution(
+        &self,
+        _tool_name: &str,
+        _tool_args: &serde_json::Value,
+        _call_id: &str,
+    ) -> anyhow::Result<Option<agents_core::hitl::AgentInterrupt>> {
+        Ok(None)
+    }
 }
 
 pub struct SummarizationMiddleware {
@@ -291,6 +315,35 @@ impl HumanInLoopMiddleware {
 impl AgentMiddleware for HumanInLoopMiddleware {
     fn id(&self) -> &'static str {
         "human-in-loop"
+    }
+
+    async fn before_tool_execution(
+        &self,
+        tool_name: &str,
+        tool_args: &serde_json::Value,
+        call_id: &str,
+    ) -> anyhow::Result<Option<agents_core::hitl::AgentInterrupt>> {
+        if let Some(policy) = self.requires_approval(tool_name) {
+            tracing::warn!(
+                tool_name = %tool_name,
+                call_id = %call_id,
+                policy_note = ?policy.note,
+                "🔒 HITL: Tool execution requires human approval"
+            );
+
+            let interrupt = agents_core::hitl::HitlInterrupt::new(
+                tool_name,
+                tool_args.clone(),
+                call_id,
+                policy.note.clone(),
+            );
+
+            return Ok(Some(agents_core::hitl::AgentInterrupt::HumanInLoop(
+                interrupt,
+            )));
+        }
+
+        Ok(None)
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {

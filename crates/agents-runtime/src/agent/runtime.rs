@@ -14,7 +14,7 @@ use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
     AgentDescriptor, AgentHandle, PlannerAction, PlannerContext, PlannerHandle,
 };
-use agents_core::hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
+use agents_core::hitl::{AgentInterrupt, HitlAction};
 use agents_core::messaging::{AgentMessage, MessageContent, MessageMetadata, MessageRole};
 use agents_core::persistence::{Checkpointer, ThreadId};
 use agents_core::state::AgentStateSnapshot;
@@ -42,17 +42,9 @@ pub struct DeepAgent {
     state: Arc<RwLock<AgentStateSnapshot>>,
     history: Arc<RwLock<Vec<AgentMessage>>>,
     _summarization: Option<Arc<SummarizationMiddleware>>,
-    hitl: Option<Arc<HumanInLoopMiddleware>>,
-    pending_hitl: Arc<RwLock<Option<HitlPending>>>,
+    _hitl: Option<Arc<HumanInLoopMiddleware>>,
     builtin_tools: Option<HashSet<String>>,
     checkpointer: Option<Arc<dyn Checkpointer>>,
-}
-
-struct HitlPending {
-    tool_name: String,
-    payload: Value,
-    tool: ToolBox,
-    message: AgentMessage,
 }
 
 impl DeepAgent {
@@ -183,68 +175,116 @@ impl DeepAgent {
         }
     }
 
+    /// Get the current pending interrupt, if any.
     pub fn current_interrupt(&self) -> Option<AgentInterrupt> {
-        self.pending_hitl.read().ok().and_then(|guard| {
-            guard.as_ref().map(|pending| {
-                AgentInterrupt::HumanInLoop(HitlInterrupt {
-                    tool_name: pending.tool_name.clone(),
-                    message: pending.message.clone(),
-                })
-            })
-        })
+        self.state
+            .read()
+            .ok()
+            .and_then(|guard| guard.pending_interrupts.first().cloned())
     }
 
-    pub async fn resume_hitl(&self, action: HitlAction) -> anyhow::Result<AgentMessage> {
-        let pending = self
-            .pending_hitl
-            .write()
-            .ok()
-            .and_then(|mut guard| guard.take())
-            .ok_or_else(|| anyhow::anyhow!("No pending HITL action"))?;
-        match action {
-            HitlAction::Approve => {
-                let result = self
-                    .execute_tool(
-                        pending.tool.clone(),
-                        pending.tool_name.clone(),
-                        pending.payload.clone(),
-                    )
-                    .await?;
-                Ok(result)
+    /// Resume execution after human approval of an interrupt.
+    pub async fn resume_with_approval(&self, action: HitlAction) -> anyhow::Result<AgentMessage> {
+        // Get the first pending interrupt
+        let interrupt = {
+            let state_guard = self
+                .state
+                .read()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on state"))?;
+            state_guard
+                .pending_interrupts
+                .first()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("No pending interrupts"))?
+        };
+
+        let result_message = match action {
+            HitlAction::Accept => {
+                // Execute with original args
+                let AgentInterrupt::HumanInLoop(hitl) = interrupt;
+                tracing::info!(
+                    tool_name = %hitl.tool_name,
+                    call_id = %hitl.call_id,
+                    "✅ HITL: Tool approved, executing with original arguments"
+                );
+
+                let tools = self.collect_tools();
+                let tool = tools
+                    .get(&hitl.tool_name)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", hitl.tool_name))?;
+
+                self.execute_tool(tool, hitl.tool_name, hitl.tool_args)
+                    .await?
             }
+
+            HitlAction::Edit {
+                tool_name,
+                tool_args,
+            } => {
+                // Execute with modified args
+                tracing::info!(
+                    tool_name = %tool_name,
+                    "✏️ HITL: Tool edited, executing with modified arguments"
+                );
+
+                let tools = self.collect_tools();
+                let tool = tools
+                    .get(&tool_name)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", tool_name))?;
+
+                self.execute_tool(tool, tool_name, tool_args).await?
+            }
+
             HitlAction::Reject { reason } => {
-                let text =
-                    reason.unwrap_or_else(|| "Tool execution rejected by human reviewer.".into());
+                // Don't execute - return rejection message
+                tracing::info!("❌ HITL: Tool rejected");
+
+                let text = reason
+                    .unwrap_or_else(|| "Tool execution rejected by human reviewer.".to_string());
+
                 let message = AgentMessage {
-                    role: MessageRole::System,
+                    role: MessageRole::Tool,
                     content: MessageContent::Text(text),
                     metadata: None,
                 };
+
                 self.append_history(message.clone());
-                Ok(message)
+                message
             }
+
             HitlAction::Respond { message } => {
+                // Don't execute - return custom message
+                tracing::info!("💬 HITL: Custom response provided");
+
                 self.append_history(message.clone());
-                Ok(message)
+                message
             }
-            HitlAction::Edit { action, args } => {
-                // Execute the edited tool/action with provided args
-                let tools = self.collect_tools();
-                if let Some(tool) = tools.get(&action).cloned() {
-                    let result = self.execute_tool(tool, action, args).await?;
-                    Ok(result)
-                } else {
-                    Ok(AgentMessage {
-                        role: MessageRole::System,
-                        content: MessageContent::Text(format!(
-                            "Edited tool '{}' not available",
-                            action
-                        )),
-                        metadata: None,
-                    })
-                }
-            }
+        };
+
+        // Clear the interrupt from state
+        {
+            let mut state_guard = self
+                .state
+                .write()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on state"))?;
+            state_guard.clear_interrupts();
         }
+
+        // Persist cleared state
+        if let Some(checkpointer) = &self.checkpointer {
+            let state_clone = self
+                .state
+                .read()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on state"))?
+                .clone();
+            checkpointer
+                .save_state(&ThreadId::default(), &state_clone)
+                .await?;
+        }
+
+        Ok(result_message)
     }
 
     /// Handle message from string input - converts string to AgentMessage internally
@@ -305,37 +345,50 @@ impl DeepAgent {
             }
             PlannerAction::CallTool { tool_name, payload } => {
                 if let Some(tool) = tools.get(&tool_name).cloned() {
-                    // Check HITL
-                    if let Some(hitl) = &self.hitl {
-                        if let Some(policy) = hitl.requires_approval(&tool_name) {
-                            let message_text = policy
-                                .note
-                                .clone()
-                                .unwrap_or_else(|| "Awaiting human approval.".into());
-                            let approval_message = AgentMessage {
+                    // Check all middleware for interrupts before executing tool
+                    let call_id = format!("call_{}", uuid::Uuid::new_v4());
+                    for middleware in &self.middlewares {
+                        if let Some(interrupt) = middleware
+                            .before_tool_execution(&tool_name, &payload, &call_id)
+                            .await?
+                        {
+                            // Save interrupt to state
+                            {
+                                let mut state_guard = self.state.write().map_err(|_| {
+                                    anyhow::anyhow!("Failed to acquire write lock on state")
+                                })?;
+                                state_guard.add_interrupt(interrupt.clone());
+                            }
+
+                            // Persist state with checkpointer
+                            if let Some(checkpointer) = &self.checkpointer {
+                                let state_clone = self
+                                    .state
+                                    .read()
+                                    .map_err(|_| {
+                                        anyhow::anyhow!("Failed to acquire read lock on state")
+                                    })?
+                                    .clone();
+                                checkpointer
+                                    .save_state(&ThreadId::default(), &state_clone)
+                                    .await?;
+                            }
+
+                            // Return interrupt message - execution pauses here
+                            let interrupt_message = AgentMessage {
                                 role: MessageRole::System,
                                 content: MessageContent::Text(format!(
-                                    "HITL_REQUIRED: Tool '{tool}' requires approval: {message}",
-                                    tool = tool_name,
-                                    message = message_text
+                                    "⏸️ Execution paused: Tool '{}' requires human approval",
+                                    tool_name
                                 )),
                                 metadata: None,
                             };
-                            let pending = HitlPending {
-                                tool_name: tool_name.clone(),
-                                payload: payload.clone(),
-                                tool: tool.clone(),
-                                message: approval_message.clone(),
-                            };
-                            if let Ok(mut guard) = self.pending_hitl.write() {
-                                *guard = Some(pending);
-                            }
-                            self.append_history(approval_message.clone());
-                            return Ok(approval_message);
+                            self.append_history(interrupt_message.clone());
+                            return Ok(interrupt_message);
                         }
                     }
 
-                    // Execute tool
+                    // No interrupt - execute tool
                     let start_time = std::time::Instant::now();
                     tracing::warn!(
                         "⚙️ EXECUTING TOOL: {} with payload: {}",
@@ -611,9 +664,19 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let hitl = if config.tool_interrupts.is_empty() {
         None
     } else {
-        Some(Arc::new(HumanInLoopMiddleware::new(
-            config.tool_interrupts.clone(),
-        )))
+        // Validate that checkpointer is configured when HITL is enabled
+        if config.checkpointer.is_none() {
+            tracing::error!(
+                "⚠️ HITL middleware requires a checkpointer to persist interrupt state. \
+                 HITL will be disabled. Please configure a checkpointer to enable HITL."
+            );
+            None
+        } else {
+            tracing::info!("🔒 HITL enabled for {} tools", config.tool_interrupts.len());
+            Some(Arc::new(HumanInLoopMiddleware::new(
+                config.tool_interrupts.clone(),
+            )))
+        }
     };
 
     // Assemble middleware stack with Deep Agent prompt for automatic tool usage
@@ -648,8 +711,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         state,
         history,
         _summarization: summarization,
-        hitl,
-        pending_hitl: Arc::new(RwLock::new(None)),
+        _hitl: hitl,
         builtin_tools: config.builtin_tools,
         checkpointer: config.checkpointer,
     }
