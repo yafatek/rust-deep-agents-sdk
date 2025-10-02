@@ -265,7 +265,29 @@ impl LanguageModel for OpenAiChatModel {
                 })
                 .collect();
 
-            tracing::debug!("OpenAI response contains {} tool calls", tool_calls.len());
+            // Enhanced logging for tool call detection
+            let tool_names: Vec<&str> = choice
+                .message
+                .tool_calls
+                .iter()
+                .map(|tc| tc.function.name.as_str())
+                .collect();
+            
+            tracing::warn!(
+                "🔧 LLM CALLED {} TOOL(S): {:?}",
+                tool_calls.len(),
+                tool_names
+            );
+            
+            // Log argument sizes for debugging
+            for (i, tc) in choice.message.tool_calls.iter().enumerate() {
+                tracing::debug!(
+                    "Tool call {}: {} with {} bytes of arguments",
+                    i + 1,
+                    tc.function.name,
+                    tc.function.arguments.len()
+                );
+            }
 
             return Ok(LlmResponse {
                 message: AgentMessage {
