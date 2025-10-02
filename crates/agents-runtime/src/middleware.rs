@@ -11,7 +11,7 @@ use agents_core::prompts::{
 };
 use agents_core::state::AgentStateSnapshot;
 use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult};
-use agents_toolkit::{create_filesystem_tools, create_todos_tool};
+use agents_toolkit::create_filesystem_tools;
 use async_trait::async_trait;
 use serde::Deserialize;
 
@@ -132,7 +132,8 @@ impl AgentMiddleware for PlanningMiddleware {
     }
 
     fn tools(&self) -> Vec<ToolBox> {
-        vec![create_todos_tool()]
+        use agents_toolkit::create_todos_tools;
+        create_todos_tools()
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
@@ -322,6 +323,41 @@ impl AgentMiddleware for BaseSystemPromptMiddleware {
     }
 }
 
+/// Deep Agent prompt middleware that injects comprehensive tool usage instructions
+/// and examples to force the LLM to actually call tools instead of just talking about them.
+///
+/// This middleware is inspired by Python's deepagents package and Claude Code's system prompt.
+/// It provides:
+/// - Explicit tool usage rules with imperative language
+/// - JSON examples of tool calling
+/// - Workflow guidance for multi-step tasks
+/// - Few-shot examples for common patterns
+pub struct DeepAgentPromptMiddleware {
+    custom_instructions: String,
+}
+
+impl DeepAgentPromptMiddleware {
+    pub fn new(custom_instructions: impl Into<String>) -> Self {
+        Self {
+            custom_instructions: custom_instructions.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl AgentMiddleware for DeepAgentPromptMiddleware {
+    fn id(&self) -> &'static str {
+        "deep-agent-prompt"
+    }
+
+    async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
+        use crate::prompts::get_deep_agent_system_prompt;
+        let deep_prompt = get_deep_agent_system_prompt(&self.custom_instructions);
+        ctx.request.append_prompt(&deep_prompt);
+        Ok(())
+    }
+}
+
 /// Anthropic-specific prompt caching middleware. Marks system prompts for caching
 /// to reduce latency on subsequent requests with the same base prompt.
 pub struct AnthropicPromptCachingMiddleware {
@@ -405,8 +441,10 @@ impl TaskRouterTool {
 
 #[derive(Debug, Clone, Deserialize)]
 struct TaskInvocationArgs {
-    description: String,
-    subagent_type: String,
+    #[serde(alias = "description")]
+    instruction: String,
+    #[serde(alias = "subagent_type")]
+    agent: String,
 }
 
 #[async_trait]
@@ -417,21 +455,21 @@ impl Tool for TaskRouterTool {
 
         let mut properties = HashMap::new();
         properties.insert(
-            "description".to_string(),
-            ToolParameterSchema::string("Description of the task for the subagent"),
+            "agent".to_string(),
+            ToolParameterSchema::string("Name of the sub-agent to delegate to"),
         );
         properties.insert(
-            "subagent_type".to_string(),
-            ToolParameterSchema::string("Type of subagent to use"),
+            "instruction".to_string(),
+            ToolParameterSchema::string("Clear instruction for the sub-agent"),
         );
 
         ToolSchema::new(
             "task",
-            "Delegate a task to a specialized subagent",
+            "Delegate a task to a specialized sub-agent. Use this when you need specialized expertise or want to break down complex tasks.",
             ToolParameterSchema::object(
-                "Task parameters",
+                "Task delegation parameters",
                 properties,
-                vec!["description".to_string(), "subagent_type".to_string()],
+                vec!["agent".to_string(), "instruction".to_string()],
             ),
         )
     }
@@ -444,15 +482,46 @@ impl Tool for TaskRouterTool {
         let args: TaskInvocationArgs = serde_json::from_value(args)?;
         let available = self.available_subagents();
 
-        if let Some(agent) = self.registry.get(&args.subagent_type) {
+        if let Some(agent) = self.registry.get(&args.agent) {
+            // Log delegation start
+            tracing::warn!(
+                "🎯 DELEGATING to sub-agent: {} with instruction: {}",
+                args.agent,
+                args.instruction
+            );
+            
+            let start_time = std::time::Instant::now();
             let user_message = AgentMessage {
                 role: MessageRole::User,
-                content: MessageContent::Text(args.description.clone()),
+                content: MessageContent::Text(args.instruction.clone()),
                 metadata: None,
             };
+            
             let response = agent
                 .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
                 .await?;
+
+            // Log delegation completion
+            let duration = start_time.elapsed();
+            let response_preview = match &response.content {
+                MessageContent::Text(t) => {
+                    if t.len() > 100 {
+                        format!("{}... ({} chars)", &t[..100], t.len())
+                    } else {
+                        t.clone()
+                    }
+                }
+                MessageContent::Json(v) => {
+                    format!("JSON: {} bytes", v.to_string().len())
+                }
+            };
+            
+            tracing::warn!(
+                "✅ SUB-AGENT {} COMPLETED in {:?} - Response: {}",
+                args.agent,
+                duration,
+                response_preview
+            );
 
             return Ok(ToolResult::Message(AgentMessage {
                 role: MessageRole::Tool,
@@ -464,12 +533,18 @@ impl Tool for TaskRouterTool {
             }));
         }
 
+        tracing::error!(
+            "❌ SUB-AGENT NOT FOUND: {} - Available: {:?}",
+            args.agent,
+            available
+        );
+        
         Ok(ToolResult::text(
             &ctx,
             format!(
-                "Unknown subagent '{subagent}'. Available: {available:?}",
-                subagent = args.subagent_type,
-                available = available
+                "Sub-agent '{}' not found. Available sub-agents: {}",
+                args.agent,
+                available.join(", ")
             ),
         ))
     }

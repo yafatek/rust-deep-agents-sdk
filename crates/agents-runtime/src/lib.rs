@@ -12,6 +12,7 @@ use async_trait::async_trait;
 pub mod agent;
 pub mod middleware;
 pub mod planner;
+pub mod prompts;
 pub mod providers;
 
 // Re-export key functions for convenience - now from the agent module

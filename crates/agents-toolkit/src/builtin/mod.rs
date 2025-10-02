@@ -4,4 +4,4 @@ pub mod filesystem;
 pub mod todos;
 
 pub use filesystem::{create_filesystem_tools, EditFileTool, LsTool, ReadFileTool, WriteFileTool};
-pub use todos::{create_todos_tool, WriteTodosTool};
+pub use todos::{create_todos_tool, create_todos_tools, ReadTodosTool, WriteTodosTool};

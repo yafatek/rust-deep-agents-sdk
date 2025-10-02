@@ -21,7 +21,7 @@ struct WriteTodosArgs {
 #[async_trait]
 impl Tool for WriteTodosTool {
     fn schema(&self) -> ToolSchema {
-        // Define the schema for TodoItem
+        // Define the schema for TodoItem (matches the actual struct)
         let mut todo_item_props = HashMap::new();
         todo_item_props.insert(
             "content".to_string(),
@@ -46,10 +46,6 @@ impl Tool for WriteTodosTool {
                 additional: HashMap::new(),
             },
         );
-        todo_item_props.insert(
-            "activeForm".to_string(),
-            ToolParameterSchema::string("Present continuous form (e.g., 'Running tests')"),
-        );
 
         let todo_item_schema = ToolParameterSchema::object(
             "A single todo item",
@@ -57,7 +53,6 @@ impl Tool for WriteTodosTool {
             vec![
                 "content".to_string(),
                 "status".to_string(),
-                "activeForm".to_string(),
             ],
         );
 
@@ -101,9 +96,69 @@ impl Tool for WriteTodosTool {
     }
 }
 
-/// Create the todos tool
+/// Read todos tool - retrieves the current todo list
+pub struct ReadTodosTool;
+
+#[async_trait]
+impl Tool for ReadTodosTool {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema::new(
+            "read_todos",
+            "Read the current todo list to check task progress",
+            ToolParameterSchema::object(
+                "Read todos parameters (no parameters needed)",
+                HashMap::new(),
+                vec![],
+            ),
+        )
+    }
+
+    async fn execute(&self, _args: Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
+        // Read from current state
+        let todos = if let Some(state_handle) = &ctx.state_handle {
+            let state = state_handle
+                .read()
+                .expect("todo state read lock poisoned");
+            state.todos.clone()
+        } else {
+            // Fallback to snapshot state
+            ctx.state.todos.clone()
+        };
+
+        if todos.is_empty() {
+            return Ok(ToolResult::text(&ctx, "No todos found."));
+        }
+
+        let todo_list = todos
+            .iter()
+            .enumerate()
+            .map(|(i, todo)| {
+                let (status_emoji, status_text) = match todo.status {
+                    agents_core::state::TodoStatus::Completed => ("✅", "COMPLETED"),
+                    agents_core::state::TodoStatus::InProgress => ("🔄", "IN_PROGRESS"),
+                    agents_core::state::TodoStatus::Pending => ("⏸️", "PENDING"),
+                };
+                format!("{}. {} {} - {}", i + 1, status_emoji, status_text, todo.content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let response = format!("Current TODO list ({} items):\n{}", todos.len(), todo_list);
+        Ok(ToolResult::text(&ctx, response))
+    }
+}
+
+/// Create the todos tool (write only)
 pub fn create_todos_tool() -> ToolBox {
     std::sync::Arc::new(WriteTodosTool)
+}
+
+/// Create both read and write todos tools
+pub fn create_todos_tools() -> Vec<ToolBox> {
+    vec![
+        std::sync::Arc::new(WriteTodosTool),
+        std::sync::Arc::new(ReadTodosTool),
+    ]
 }
 
 #[cfg(test)]
@@ -126,13 +181,11 @@ mod tests {
                     "todos": [
                         {
                             "content": "Do task",
-                            "status": "pending",
-                            "activeForm": "Doing task"
+                            "status": "pending"
                         },
                         {
                             "content": "Ship feature",
-                            "status": "completed",
-                            "activeForm": "Shipping feature"
+                            "status": "completed"
                         }
                     ]
                 }),
