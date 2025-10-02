@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Core message structure exchanged between runtimes, planners, and tools.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentMessage {
     pub role: MessageRole,
     pub content: MessageContent,
@@ -9,7 +9,7 @@ pub struct AgentMessage {
     pub metadata: Option<MessageMetadata>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MessageRole {
     User,
     Agent,
@@ -17,7 +17,7 @@ pub enum MessageRole {
     System,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "value")]
 pub enum MessageContent {
     Text(String),
@@ -49,7 +49,7 @@ pub struct ToolInvocation {
     pub tool_call_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -58,7 +58,7 @@ pub struct MessageMetadata {
 }
 
 /// Cache control metadata for Anthropic prompt caching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CacheControl {
     /// Cache type - currently only "ephemeral" is supported by Anthropic
     #[serde(rename = "type")]

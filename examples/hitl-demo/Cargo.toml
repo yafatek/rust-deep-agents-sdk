@@ -1,0 +1,16 @@
+[package]
+name = "hitl-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agents-sdk = { path = "../../crates/agents-sdk" }
+agents-core = { path = "../../crates/agents-core" }
+agents-runtime = { path = "../../crates/agents-runtime" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = "0.3"
+dotenvy = "0.15"
