@@ -523,14 +523,14 @@ impl Tool for TaskRouterTool {
                 response_preview
             );
 
-            return Ok(ToolResult::Message(AgentMessage {
-                role: MessageRole::Tool,
-                content: response.content,
-                metadata: ctx.tool_call_id.map(|id| MessageMetadata {
-                    tool_call_id: Some(id),
-                    cache_control: None,
-                }),
-            }));
+            // Return sub-agent response as text content, not as a separate tool message
+            // This will be incorporated into the LLM's next response naturally
+            let result_text = match response.content {
+                MessageContent::Text(text) => text,
+                MessageContent::Json(json) => json.to_string(),
+            };
+
+            return Ok(ToolResult::text(&ctx, result_text));
         }
 
         tracing::error!(

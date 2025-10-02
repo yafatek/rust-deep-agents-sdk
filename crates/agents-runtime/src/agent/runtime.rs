@@ -164,7 +164,8 @@ impl DeepAgent {
     fn apply_tool_result(&self, result: ToolResult) -> AgentMessage {
         match result {
             ToolResult::Message(message) => {
-                self.append_history(message.clone());
+                // Tool results are not added to conversation history
+                // Only the final LLM response after tool execution is added
                 message
             }
             ToolResult::WithStateUpdate {
@@ -175,7 +176,8 @@ impl DeepAgent {
                     let command = agents_core::command::Command::with_state(state_diff);
                     command.apply_to(&mut state);
                 }
-                self.append_history(message.clone());
+                // Tool results are not added to conversation history
+                // Only the final LLM response after tool execution is added
                 message
             }
         }
@@ -277,6 +279,7 @@ impl DeepAgent {
     ) -> anyhow::Result<AgentMessage> {
         self.append_history(input.clone());
 
+        // Build request with current history
         let mut request = ModelRequest::new(&self.instructions, self.current_history());
         let tools = self.collect_tools();
         for middleware in &self.middlewares {
@@ -292,6 +295,7 @@ impl DeepAgent {
         };
         let state_snapshot = Arc::new(self.state.read().map(|s| s.clone()).unwrap_or_default());
 
+        // Ask LLM what to do
         let decision = self.planner.plan(context, state_snapshot).await?;
 
         match decision.next_action {
@@ -301,6 +305,7 @@ impl DeepAgent {
             }
             PlannerAction::CallTool { tool_name, payload } => {
                 if let Some(tool) = tools.get(&tool_name).cloned() {
+                    // Check HITL
                     if let Some(hitl) = &self.hitl {
                         if let Some(policy) = hitl.requires_approval(&tool_name) {
                             let message_text = policy
@@ -330,7 +335,7 @@ impl DeepAgent {
                         }
                     }
 
-                    // Log tool execution start
+                    // Execute tool
                     let start_time = std::time::Instant::now();
                     tracing::warn!(
                         "⚙️ EXECUTING TOOL: {} with payload: {}",
@@ -343,11 +348,10 @@ impl DeepAgent {
                         .execute_tool(tool.clone(), tool_name.clone(), payload.clone())
                         .await;
 
-                    // Log tool execution completion
                     let duration = start_time.elapsed();
-                    match &result {
-                        Ok(message) => {
-                            let content_preview = match &message.content {
+                    match result {
+                        Ok(tool_result_message) => {
+                            let content_preview = match &tool_result_message.content {
                                 MessageContent::Text(t) => {
                                     if t.len() > 100 {
                                         format!("{}... ({} chars)", &t[..100], t.len())
@@ -365,6 +369,33 @@ impl DeepAgent {
                                 duration,
                                 content_preview
                             );
+
+                            // Tool executed successfully - now respond naturally
+                            // Create a natural response incorporating the tool result
+                            let natural_response = match &tool_result_message.content {
+                                MessageContent::Text(text) => {
+                                    if text.is_empty() {
+                                        format!(
+                                            "I've executed the {} tool successfully.",
+                                            tool_name
+                                        )
+                                    } else {
+                                        // Include the tool result in the response
+                                        text.clone()
+                                    }
+                                }
+                                MessageContent::Json(json) => {
+                                    format!("Tool result: {}", json)
+                                }
+                            };
+
+                            let response = AgentMessage {
+                                role: MessageRole::Agent,
+                                content: MessageContent::Text(natural_response),
+                                metadata: None,
+                            };
+                            self.append_history(response.clone());
+                            Ok(response)
                         }
                         Err(e) => {
                             tracing::error!(
@@ -373,32 +404,45 @@ impl DeepAgent {
                                 duration,
                                 e
                             );
+
+                            // Tool failed - respond with error message
+                            let error_response = AgentMessage {
+                                role: MessageRole::Agent,
+                                content: MessageContent::Text(format!(
+                                    "I encountered an error while executing {}: {}",
+                                    tool_name, e
+                                )),
+                                metadata: None,
+                            };
+                            self.append_history(error_response.clone());
+                            Ok(error_response)
                         }
                     }
-
-                    result
                 } else {
-                    Ok(AgentMessage {
-                        role: MessageRole::Tool,
+                    // Tool not found
+                    tracing::warn!("⚠️ Tool '{}' not found", tool_name);
+                    let error_response = AgentMessage {
+                        role: MessageRole::Agent,
                         content: MessageContent::Text(format!(
-                            "Tool '{tool}' not available",
-                            tool = tool_name
+                            "I don't have access to the '{}' tool.",
+                            tool_name
                         )),
-                        metadata: Some(MessageMetadata {
-                            tool_call_id: None,
-                            cache_control: None,
-                        }),
-                    })
+                        metadata: None,
+                    };
+                    self.append_history(error_response.clone());
+                    Ok(error_response)
                 }
             }
-            PlannerAction::Terminate => Ok(AgentMessage {
-                role: MessageRole::Agent,
-                content: MessageContent::Text("Terminating conversation.".into()),
-                metadata: Some(MessageMetadata {
-                    tool_call_id: None,
-                    cache_control: None,
-                }),
-            }),
+            PlannerAction::Terminate => {
+                tracing::debug!("🛑 Agent terminated");
+                let message = AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Text("Task completed.".into()),
+                    metadata: None,
+                };
+                self.append_history(message.clone());
+                Ok(message)
+            }
         }
     }
 }
