@@ -699,8 +699,8 @@ mod tests {
         let response = task_tool
             .execute(
                 json!({
-                    "description": "Do something",
-                    "subagent_type": "unknown"
+                    "instruction": "Do something",
+                    "agent": "unknown"
                 }),
                 ctx,
             )
@@ -709,7 +709,7 @@ mod tests {
 
         match response {
             ToolResult::Message(msg) => match msg.content {
-                MessageContent::Text(text) => assert!(text.contains("Unknown subagent")),
+                MessageContent::Text(text) => assert!(text.contains("Sub-agent 'unknown' not found")),
                 other => panic!("expected text, got {other:?}"),
             },
             _ => panic!("expected message"),
