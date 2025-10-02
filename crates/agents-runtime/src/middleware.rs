@@ -489,14 +489,14 @@ impl Tool for TaskRouterTool {
                 args.agent,
                 args.instruction
             );
-            
+
             let start_time = std::time::Instant::now();
             let user_message = AgentMessage {
                 role: MessageRole::User,
                 content: MessageContent::Text(args.instruction.clone()),
                 metadata: None,
             };
-            
+
             let response = agent
                 .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
                 .await?;
@@ -515,7 +515,7 @@ impl Tool for TaskRouterTool {
                     format!("JSON: {} bytes", v.to_string().len())
                 }
             };
-            
+
             tracing::warn!(
                 "✅ SUB-AGENT {} COMPLETED in {:?} - Response: {}",
                 args.agent,
@@ -538,7 +538,7 @@ impl Tool for TaskRouterTool {
             args.agent,
             available
         );
-        
+
         Ok(ToolResult::text(
             &ctx,
             format!(
@@ -709,7 +709,9 @@ mod tests {
 
         match response {
             ToolResult::Message(msg) => match msg.content {
-                MessageContent::Text(text) => assert!(text.contains("Sub-agent 'unknown' not found")),
+                MessageContent::Text(text) => {
+                    assert!(text.contains("Sub-agent 'unknown' not found"))
+                }
                 other => panic!("expected text, got {other:?}"),
             },
             _ => panic!("expected message"),

@@ -50,10 +50,7 @@ impl Tool for WriteTodosTool {
         let todo_item_schema = ToolParameterSchema::object(
             "A single todo item",
             todo_item_props,
-            vec![
-                "content".to_string(),
-                "status".to_string(),
-            ],
+            vec!["content".to_string(), "status".to_string()],
         );
 
         let mut properties = HashMap::new();
@@ -116,9 +113,7 @@ impl Tool for ReadTodosTool {
     async fn execute(&self, _args: Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
         // Read from current state
         let todos = if let Some(state_handle) = &ctx.state_handle {
-            let state = state_handle
-                .read()
-                .expect("todo state read lock poisoned");
+            let state = state_handle.read().expect("todo state read lock poisoned");
             state.todos.clone()
         } else {
             // Fallback to snapshot state
@@ -138,7 +133,13 @@ impl Tool for ReadTodosTool {
                     agents_core::state::TodoStatus::InProgress => ("🔄", "IN_PROGRESS"),
                     agents_core::state::TodoStatus::Pending => ("⏸️", "PENDING"),
                 };
-                format!("{}. {} {} - {}", i + 1, status_emoji, status_text, todo.content)
+                format!(
+                    "{}. {} {} - {}",
+                    i + 1,
+                    status_emoji,
+                    status_text,
+                    todo.content
+                )
             })
             .collect::<Vec<_>>()
             .join("\n");

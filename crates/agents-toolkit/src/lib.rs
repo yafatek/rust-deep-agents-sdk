@@ -38,6 +38,6 @@ pub use agents_macros::tool;
 
 // Re-export built-in tools
 pub use builtin::{
-    create_filesystem_tools, create_todos_tool, create_todos_tools, EditFileTool, LsTool, ReadFileTool, ReadTodosTool, WriteFileTool,
-    WriteTodosTool,
+    create_filesystem_tools, create_todos_tool, create_todos_tools, EditFileTool, LsTool,
+    ReadFileTool, ReadTodosTool, WriteFileTool, WriteTodosTool,
 };
