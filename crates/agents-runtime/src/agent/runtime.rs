@@ -7,8 +7,8 @@ use super::config::DeepAgentConfig;
 use crate::middleware::{
     AgentMiddleware, AnthropicPromptCachingMiddleware, BaseSystemPromptMiddleware,
     DeepAgentPromptMiddleware, FilesystemMiddleware, HumanInLoopMiddleware, MiddlewareContext,
-    ModelRequest, PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware,
-    SubAgentRegistration, SummarizationMiddleware,
+    ModelRequest, PlanningMiddleware, SubAgentDescriptor, SubAgentMiddleware, SubAgentRegistration,
+    SummarizationMiddleware,
 };
 use crate::planner::LlmBackedPlanner;
 use agents_core::agent::{
@@ -329,18 +329,20 @@ impl DeepAgent {
                             return Ok(approval_message);
                         }
                     }
-                    
+
                     // Log tool execution start
                     let start_time = std::time::Instant::now();
                     tracing::warn!(
                         "⚙️ EXECUTING TOOL: {} with payload: {}",
                         tool_name,
-                        serde_json::to_string(&payload).unwrap_or_else(|_| "invalid json".to_string())
+                        serde_json::to_string(&payload)
+                            .unwrap_or_else(|_| "invalid json".to_string())
                     );
-                    
-                    let result = self.execute_tool(tool.clone(), tool_name.clone(), payload.clone())
+
+                    let result = self
+                        .execute_tool(tool.clone(), tool_name.clone(), payload.clone())
                         .await;
-                    
+
                     // Log tool execution completion
                     let duration = start_time.elapsed();
                     match &result {
@@ -373,7 +375,7 @@ impl DeepAgent {
                             );
                         }
                     }
-                    
+
                     result
                 } else {
                     Ok(AgentMessage {
@@ -572,8 +574,13 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
 
     // Assemble middleware stack with Deep Agent prompt for automatic tool usage
     // Order: base → deep agent prompt → planning → filesystem → subagents → summarization → caching → HITL
-    let mut middlewares: Vec<Arc<dyn AgentMiddleware>> =
-        vec![base_prompt, deep_agent_prompt, planning, filesystem, subagent];
+    let mut middlewares: Vec<Arc<dyn AgentMiddleware>> = vec![
+        base_prompt,
+        deep_agent_prompt,
+        planning,
+        filesystem,
+        subagent,
+    ];
     if let Some(ref summary) = summarization {
         middlewares.push(summary.clone());
     }

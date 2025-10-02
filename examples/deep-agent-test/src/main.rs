@@ -7,8 +7,7 @@
 //! 4. Built-in Deep Agent system prompt
 
 use agents_sdk::{
-    ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig, 
-    persistence::InMemoryCheckpointer, tool
+    persistence::InMemoryCheckpointer, tool, ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -25,17 +24,20 @@ fn add_numbers(a: i32, b: i32) -> i32 {
 #[tool("Performs complex mathematical calculations")]
 fn calculate(expression: String) -> String {
     println!("🔢 CALCULATE TOOL CALLED: {}", expression);
-    
+
     // Simple expression evaluator (just for demo)
     if expression.contains("+") {
         let parts: Vec<&str> = expression.split('+').collect();
         if parts.len() == 2 {
-            if let (Ok(a), Ok(b)) = (parts[0].trim().parse::<i32>(), parts[1].trim().parse::<i32>()) {
+            if let (Ok(a), Ok(b)) = (
+                parts[0].trim().parse::<i32>(),
+                parts[1].trim().parse::<i32>(),
+            ) {
                 return format!("{} + {} = {}", a, b, a + b);
             }
         }
     }
-    
+
     format!("Calculated: {}", expression)
 }
 
@@ -48,9 +50,8 @@ async fn main() -> Result<()> {
 
     // Load environment variables
     dotenvy::dotenv().ok();
-    
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .expect("OPENAI_API_KEY must be set in .env file");
+
+    let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in .env file");
 
     info!("🚀 Starting Deep Agent Test");
     info!("This will demonstrate:");
@@ -66,14 +67,15 @@ async fn main() -> Result<()> {
     let calculator_subagent = SubAgentConfig::new(
         "calculator",
         "Mathematical calculation specialist",
-        "You are a calculator agent. Use the calculate tool to perform mathematical operations."
-    ).with_tools(vec![CalculateTool::as_tool()]);
+        "You are a calculator agent. Use the calculate tool to perform mathematical operations.",
+    )
+    .with_tools(vec![CalculateTool::as_tool()]);
 
     // Create a research sub-agent (no tools, just analysis)
     let research_subagent = SubAgentConfig::new(
-        "researcher", 
+        "researcher",
         "Research and analysis specialist",
-        "You are a research agent. Analyze topics and provide detailed insights."
+        "You are a research agent. Analyze topics and provide detailed insights.",
     );
 
     // Build the Deep Agent with automatic features
@@ -92,7 +94,7 @@ async fn main() -> Result<()> {
     info!("\n=== TEST 1: Automatic Tool Calling ===");
     test_automatic_tool_calling(&agent).await?;
 
-    // Test 2: Sub-agent delegation  
+    // Test 2: Sub-agent delegation
     info!("\n=== TEST 2: Sub-Agent Delegation ===");
     test_subagent_delegation(&agent).await?;
 
@@ -110,60 +112,83 @@ async fn main() -> Result<()> {
 
 async fn test_automatic_tool_calling(agent: &agents_sdk::DeepAgent) -> Result<()> {
     info!("Testing if agent automatically calls tools...");
-    
-    let response = agent.handle_message(
-        "What is 15 + 27?",
-        Arc::new(agents_sdk::state::AgentStateSnapshot::default())
-    ).await?;
-    
-    info!("Response: {}", response.content.as_text().unwrap_or("No text"));
+
+    let response = agent
+        .handle_message(
+            "What is 15 + 27?",
+            Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
+        )
+        .await?;
+
+    info!(
+        "Response: {}",
+        response.content.as_text().unwrap_or("No text")
+    );
     Ok(())
 }
 
 async fn test_subagent_delegation(agent: &agents_sdk::DeepAgent) -> Result<()> {
     info!("Testing sub-agent delegation...");
-    
-    let response = agent.handle_message(
-        "Use the calculator agent to compute 25 * 4",
-        Arc::new(agents_sdk::state::AgentStateSnapshot::default())
-    ).await?;
-    
-    info!("Response: {}", response.content.as_text().unwrap_or("No text"));
+
+    let response = agent
+        .handle_message(
+            "Use the calculator agent to compute 25 * 4",
+            Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
+        )
+        .await?;
+
+    info!(
+        "Response: {}",
+        response.content.as_text().unwrap_or("No text")
+    );
     Ok(())
 }
 
 async fn test_todo_persistence(agent: &agents_sdk::DeepAgent) -> Result<()> {
     info!("Testing TODO persistence...");
-    
+
     // First message: create a plan
-    let response1 = agent.handle_message(
-        "Create a plan to research artificial intelligence and write a summary",
-        Arc::new(agents_sdk::state::AgentStateSnapshot::default())
-    ).await?;
-    
-    info!("Plan created: {}", response1.content.as_text().unwrap_or("No text"));
-    
+    let response1 = agent
+        .handle_message(
+            "Create a plan to research artificial intelligence and write a summary",
+            Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
+        )
+        .await?;
+
+    info!(
+        "Plan created: {}",
+        response1.content.as_text().unwrap_or("No text")
+    );
+
     // Save state
     agent.save_state(&"test-thread".to_string()).await?;
-    
+
     // Second message: check the plan (simulating conversation continuation)
-    let response2 = agent.handle_message(
-        "What's my current plan?",
-        Arc::new(agents_sdk::state::AgentStateSnapshot::default())
-    ).await?;
-    
-    info!("Plan retrieved: {}", response2.content.as_text().unwrap_or("No text"));
+    let response2 = agent
+        .handle_message(
+            "What's my current plan?",
+            Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
+        )
+        .await?;
+
+    info!(
+        "Plan retrieved: {}",
+        response2.content.as_text().unwrap_or("No text")
+    );
     Ok(())
 }
 
 async fn test_multistep_workflow(agent: &agents_sdk::DeepAgent) -> Result<()> {
     info!("Testing complex multi-step workflow...");
-    
+
     let response = agent.handle_message(
         "I need to calculate 100 + 200, then research the history of mathematics, and create a plan for both tasks",
         Arc::new(agents_sdk::state::AgentStateSnapshot::default())
     ).await?;
-    
-    info!("Workflow response: {}", response.content.as_text().unwrap_or("No text"));
+
+    info!(
+        "Workflow response: {}",
+        response.content.as_text().unwrap_or("No text")
+    );
     Ok(())
 }

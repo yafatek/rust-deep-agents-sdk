@@ -272,13 +272,13 @@ impl LanguageModel for OpenAiChatModel {
                 .iter()
                 .map(|tc| tc.function.name.as_str())
                 .collect();
-            
+
             tracing::warn!(
                 "🔧 LLM CALLED {} TOOL(S): {:?}",
                 tool_calls.len(),
                 tool_names
             );
-            
+
             // Log argument sizes for debugging
             for (i, tc) in choice.message.tool_calls.iter().enumerate() {
                 tracing::debug!(
