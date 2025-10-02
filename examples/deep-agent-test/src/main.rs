@@ -106,24 +106,36 @@ async fn main() -> Result<()> {
     info!("\n=== TEST 4: Multi-Step Workflow ===");
     test_multistep_workflow(&agent).await?;
 
+    // Test 5: Conversation continuation (the main fix)
+    info!("\n=== TEST 5: Conversation Continuation Fix ===");
+    test_conversation_continuation(&agent).await?;
+
     info!("🎉 All Deep Agent tests completed successfully!");
     Ok(())
 }
 
 async fn test_automatic_tool_calling(agent: &agents_sdk::DeepAgent) -> Result<()> {
-    info!("Testing if agent automatically calls tools...");
+    info!("Testing if agent automatically calls tools and provides natural responses...");
 
     let response = agent
         .handle_message(
-            "What is 15 + 27?",
+            "What is 15 + 27? Please explain the calculation.",
             Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
         )
         .await?;
 
-    info!(
-        "Response: {}",
-        response.content.as_text().unwrap_or("No text")
-    );
+    let response_text = response.content.as_text().unwrap_or("No text");
+    info!("Response: {}", response_text);
+
+    // Verify we got a natural response, not just tool output
+    if response_text.is_empty() {
+        info!("❌ ISSUE: Got empty response after tool call");
+    } else if response_text.contains("42") {
+        info!("✅ SUCCESS: Got natural response that includes the calculation result");
+    } else {
+        info!("⚠️ UNEXPECTED: Got response but doesn't contain expected result");
+    }
+
     Ok(())
 }
 
@@ -179,16 +191,53 @@ async fn test_todo_persistence(agent: &agents_sdk::DeepAgent) -> Result<()> {
 }
 
 async fn test_multistep_workflow(agent: &agents_sdk::DeepAgent) -> Result<()> {
-    info!("Testing complex multi-step workflow...");
+    info!("Testing complex multi-step workflow with conversation continuation...");
 
     let response = agent.handle_message(
         "I need to calculate 100 + 200, then research the history of mathematics, and create a plan for both tasks",
         Arc::new(agents_sdk::state::AgentStateSnapshot::default())
     ).await?;
 
-    info!(
-        "Workflow response: {}",
-        response.content.as_text().unwrap_or("No text")
-    );
+    let response_text = response.content.as_text().unwrap_or("No text");
+    info!("Workflow response: {}", response_text);
+
+    // Verify we got a comprehensive response that addresses all parts
+    if response_text.is_empty() {
+        info!("❌ ISSUE: Got empty response after multi-step workflow");
+    } else if response_text.len() > 50 {
+        info!("✅ SUCCESS: Got comprehensive response for multi-step workflow");
+    } else {
+        info!("⚠️ PARTIAL: Got response but it seems incomplete");
+    }
+
+    Ok(())
+}
+
+// Test specifically for conversation continuation after tool calls
+async fn test_conversation_continuation(agent: &agents_sdk::DeepAgent) -> Result<()> {
+    info!("Testing conversation continuation after tool execution...");
+
+    let response = agent
+        .handle_message(
+            "Calculate 50 + 75 and then tell me what you think about the result",
+            Arc::new(agents_sdk::state::AgentStateSnapshot::default()),
+        )
+        .await?;
+
+    let response_text = response.content.as_text().unwrap_or("No text");
+    info!("Continuation response: {}", response_text);
+
+    // This should demonstrate that the agent:
+    // 1. Calls the add_numbers tool
+    // 2. Gets the result (125)
+    // 3. Continues the conversation to provide commentary
+    if response_text.is_empty() {
+        info!("❌ CRITICAL: Empty response - conversation continuation failed!");
+    } else if response_text.contains("125") && response_text.len() > 20 {
+        info!("✅ EXCELLENT: Tool result incorporated into natural conversation");
+    } else {
+        info!("⚠️ PARTIAL: Got response but conversation continuation may be incomplete");
+    }
+
     Ok(())
 }
