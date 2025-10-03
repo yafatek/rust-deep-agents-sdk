@@ -84,6 +84,28 @@ pub trait AgentHandle: Send + Sync {
             Ok(StreamChunk::Done { message: response })
         })))
     }
+
+    /// Get the current pending interrupt if any
+    /// Returns None if no interrupts are pending
+    async fn current_interrupt(&self) -> anyhow::Result<Option<crate::hitl::AgentInterrupt>> {
+        // Default implementation returns None
+        Ok(None)
+    }
+
+    /// Resume execution after human approval of an interrupt
+    ///
+    /// # Arguments
+    /// * `action` - The human's decision (Accept, Edit, Reject, or Respond)
+    ///
+    /// # Returns
+    /// The agent's response after processing the action
+    async fn resume_with_approval(
+        &self,
+        _action: crate::hitl::HitlAction,
+    ) -> anyhow::Result<AgentMessage> {
+        // Default implementation returns an error
+        anyhow::bail!("resume_with_approval not implemented for this agent")
+    }
 }
 
 // ToolResponse has been removed - use ToolResult from crate::tools instead
