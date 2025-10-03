@@ -27,6 +27,9 @@ pub use providers::{
     OpenAiConfig,
 };
 
+// Re-export HITL types
+pub use middleware::HitlPolicy;
+
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>
 where
