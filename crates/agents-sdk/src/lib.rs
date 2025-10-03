@@ -161,6 +161,7 @@ pub use agents_runtime::{
     DeepAgent,
     GeminiChatModel,
     GeminiConfig,
+    HitlPolicy,
     OpenAiChatModel,
     OpenAiConfig,
     SubAgentConfig,

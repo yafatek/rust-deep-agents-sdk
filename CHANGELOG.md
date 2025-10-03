@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.12] - 2025-01-10
+
+### Added
+- **Complete HITL Financial Advisor Example**: Real-world example with OpenAI integration
+  - Demonstrates full HITL workflow with money transfers and stock trades
+  - Shows interrupt detection, human review, and approval flow
+  - Includes sub-agents for research and risk assessment
+  - Clear agent prompts for proper tool usage
+- **Improved README**: Step-by-step HITL usage guide with code examples
+- **HitlPolicy Export**: Now properly exported from agents-sdk for easy access
+
+### Fixed
+- Agent prompts now include clear instructions for tool usage with HITL
+- Example properly demonstrates interrupt → review → approval → execution flow
+
 ## [0.0.11] - 2025-01-10
 
 ### Added
@@ -101,7 +116,8 @@ let agent = ConfigurableAgentBuilder::new("instructions")
 - InMemory, Redis, PostgreSQL, and DynamoDB checkpointers
 - Comprehensive examples and documentation
 
-[Unreleased]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.11...HEAD
+[Unreleased]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.12...HEAD
+[0.0.12]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/yafatek/rust-deep-agents-sdk/releases/tag/v0.0.9

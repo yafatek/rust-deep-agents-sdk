@@ -179,42 +179,77 @@ The HITL middleware allows you to require human approval before executing specif
 - **Cost Control**: Expensive API calls or resource-intensive operations
 - **Compliance**: Operations requiring audit trails or manual oversight
 
-#### Basic HITL Configuration
+#### Quick Start - HITL in 3 Steps
+
+**Step 1: Configure HITL Policies**
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy};
-use std::collections::HashMap;
+use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy, persistence::InMemoryCheckpointer};
+use std::sync::Arc;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Define which tools require approval
-    let mut tool_policies = HashMap::new();
-    
-    // Require approval for dangerous operations
-    tool_policies.insert(
-        "delete_file".to_string(),
-        HitlPolicy {
-            allow_auto: false,  // Requires human approval
-            note: Some("File deletion requires security review".to_string()),
+// Step 1: Define HITL policies
+let checkpointer = Arc::new(InMemoryCheckpointer::new());
+
+let mut agent_builder = ConfigurableAgentBuilder::new(
+    "You are a helpful assistant. When users request operations, call the appropriate tools immediately."
+)
+.with_model(get_default_model()?)
+.with_tools(vec![/* your tools */]);
+
+// Add HITL policy for each critical tool
+agent_builder = agent_builder.with_tool_interrupt(
+    "delete_file",
+    HitlPolicy {
+        allow_auto: false,  // Requires approval
+        note: Some("File deletion requires security review".to_string()),
+    }
+);
+
+let agent = agent_builder
+    .with_checkpointer(checkpointer)  // Required for HITL!
+    .build()?;
+```
+
+**Step 2: Handle Interrupts**
+
+```rust
+use agents_sdk::{hitl::HitlAction, state::AgentStateSnapshot};
+
+// Agent will pause when it tries to call a restricted tool
+match agent.handle_message("Delete the old_data.txt file", Arc::new(AgentStateSnapshot::default())).await {
+    Ok(response) => {
+        // Check if execution was paused
+        if let Some(text) = response.content.as_text() {
+            if text.contains("paused") || text.contains("approval") {
+                // HITL was triggered!
+                if let Some(interrupt) = agent.current_interrupt() {
+                    // Show interrupt details to human
+                    println!("Tool: {}", interrupt.tool_name);
+                    println!("Args: {}", interrupt.tool_args);
+                }
+            }
         }
-    );
-    
-    // Allow automatic execution for safe operations
-    tool_policies.insert(
-        "read_file".to_string(),
-        HitlPolicy {
-            allow_auto: true,  // No approval needed
-            note: None,
-        }
-    );
-
-    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-        .with_tool_interrupts(tool_policies)
-        .with_checkpointer(checkpointer)  // Required for HITL!
-        .build()?;
-
-    Ok(())
+    }
+    Err(e) => println!("Error: {}", e),
 }
+```
+
+**Step 3: Resume with Approval**
+
+```rust
+// After human reviews and approves
+agent.resume_with_approval(HitlAction::Accept).await?;
+
+// Or modify the arguments
+agent.resume_with_approval(HitlAction::Edit {
+    tool_name: "delete_file".to_string(),
+    tool_args: json!({"path": "/safe/path/file.txt"}),
+}).await?;
+
+// Or reject
+agent.resume_with_approval(HitlAction::Reject {
+    reason: Some("Operation not authorized".to_string()),
+}).await?;
 ```
 
 **Important**: HITL requires a checkpointer to persist interrupt state. If no checkpointer is configured, HITL will be automatically disabled with a warning.
@@ -388,7 +423,7 @@ fn get_user_approval() -> &'static str {
 }
 ```
 
-See [`examples/hitl-demo`](examples/hitl-demo) for a complete working example with OpenAI integration.
+**See Complete Example**: [`examples/hitl-financial-advisor`](examples/hitl-financial-advisor) - Full working demo with real OpenAI integration, showing transfer approvals, sub-agents, and all HITL actions.
 
 #### HITL Best Practices
 
