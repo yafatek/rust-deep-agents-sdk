@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.11] - 2025-01-10
+
+### Added
+- **AgentHandle trait extensions for HITL**:
+  - `current_interrupt()` method to retrieve pending interrupts
+  - `resume_with_approval(action)` method to resume execution after human approval
+  - Both methods implemented in `DeepAgent` with full functionality
+
+### Fixed
+- HITL workflow now fully functional with trait-based API
+- Agents can now be controlled via the `AgentHandle` trait interface
+
 ## [0.0.10] - 2025-01-10
 
 ### Added
@@ -89,6 +101,7 @@ let agent = ConfigurableAgentBuilder::new("instructions")
 - InMemory, Redis, PostgreSQL, and DynamoDB checkpointers
 - Comprehensive examples and documentation
 
-[Unreleased]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.10...HEAD
+[Unreleased]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.11...HEAD
+[0.0.11]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/yafatek/rust-deep-agents-sdk/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/yafatek/rust-deep-agents-sdk/releases/tag/v0.0.9
