@@ -559,6 +559,21 @@ impl AgentHandle for DeepAgent {
             })))
         }
     }
+
+    async fn current_interrupt(&self) -> anyhow::Result<Option<AgentInterrupt>> {
+        let state_guard = self
+            .state
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on state"))?;
+        Ok(state_guard.pending_interrupts.first().cloned())
+    }
+
+    async fn resume_with_approval(
+        &self,
+        action: agents_core::hitl::HitlAction,
+    ) -> anyhow::Result<AgentMessage> {
+        self.resume_with_approval(action).await
+    }
 }
 
 /// Create a deep agent from configuration - matches Python middleware assembly exactly
