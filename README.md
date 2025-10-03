@@ -171,6 +171,235 @@ async fn main() -> anyhow::Result<()> {
 
 See [`examples/checkpointer-demo`](examples/checkpointer-demo) for a complete working example.
 
+### Human-in-the-Loop (HITL) Tool Approval
+
+The HITL middleware allows you to require human approval before executing specific tools. This is essential for:
+- **Critical Operations**: Database modifications, file deletions, API calls with side effects
+- **Security Review**: Operations that access sensitive data or external systems
+- **Cost Control**: Expensive API calls or resource-intensive operations
+- **Compliance**: Operations requiring audit trails or manual oversight
+
+#### Basic HITL Configuration
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Define which tools require approval
+    let mut tool_policies = HashMap::new();
+    
+    // Require approval for dangerous operations
+    tool_policies.insert(
+        "delete_file".to_string(),
+        HitlPolicy {
+            allow_auto: false,  // Requires human approval
+            note: Some("File deletion requires security review".to_string()),
+        }
+    );
+    
+    // Allow automatic execution for safe operations
+    tool_policies.insert(
+        "read_file".to_string(),
+        HitlPolicy {
+            allow_auto: true,  // No approval needed
+            note: None,
+        }
+    );
+
+    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+        .with_tool_interrupts(tool_policies)
+        .with_checkpointer(checkpointer)  // Required for HITL!
+        .build()?;
+
+    Ok(())
+}
+```
+
+**Important**: HITL requires a checkpointer to persist interrupt state. If no checkpointer is configured, HITL will be automatically disabled with a warning.
+
+#### HITL Policy Structure
+
+The `HitlPolicy` struct controls tool execution behavior:
+
+```rust
+pub struct HitlPolicy {
+    /// If true, tool executes automatically without approval
+    /// If false, execution pauses and waits for human response
+    pub allow_auto: bool,
+    
+    /// Optional note explaining why approval is needed
+    /// Shown to humans when reviewing the interrupt
+    pub note: Option<String>,
+}
+```
+
+#### Handling Interrupts
+
+When a tool requires approval, the agent execution pauses and creates an interrupt:
+
+```rust
+use agents_sdk::{AgentMessage, MessageContent, MessageRole};
+use std::sync::Arc;
+
+// Agent encounters a tool requiring approval
+let result = agent.handle_message(
+    "Delete the old_data.txt file",
+    Arc::new(AgentStateSnapshot::default())
+).await;
+
+// Execution pauses with an interrupt error
+match result {
+    Err(e) if e.to_string().contains("HITL interrupt") => {
+        println!("Tool execution requires approval!");
+        
+        // Check the current interrupt
+        if let Some(interrupt) = agent.current_interrupt().await? {
+            match interrupt {
+                AgentInterrupt::HumanInLoop(hitl) => {
+                    println!("Tool: {}", hitl.tool_name);
+                    println!("Args: {}", hitl.tool_args);
+                    println!("Note: {:?}", hitl.policy_note);
+                    println!("Call ID: {}", hitl.call_id);
+                }
+            }
+        }
+    }
+    _ => {}
+}
+```
+
+#### Responding to Interrupts
+
+Use `HitlAction` to respond to interrupts:
+
+```rust
+use agents_sdk::HitlAction;
+
+// 1. Accept - Execute with original arguments
+agent.resume_with_approval(HitlAction::Accept).await?;
+
+// 2. Edit - Execute with modified arguments
+agent.resume_with_approval(HitlAction::Edit {
+    tool_name: "delete_file".to_string(),
+    tool_args: json!({"path": "/safe/path/file.txt"}),  // Modified path
+}).await?;
+
+// 3. Reject - Cancel execution with optional reason
+agent.resume_with_approval(HitlAction::Reject {
+    reason: Some("Operation not authorized".to_string()),
+}).await?;
+
+// 4. Respond - Provide custom message instead of executing
+agent.resume_with_approval(HitlAction::Respond {
+    message: AgentMessage {
+        role: MessageRole::Agent,
+        content: MessageContent::Text(
+            "I cannot delete that file. Please use the archive tool instead.".to_string()
+        ),
+        metadata: None,
+    },
+}).await?;
+```
+
+#### Complete HITL Example
+
+```rust
+use agents_sdk::{
+    ConfigurableAgentBuilder, HitlPolicy, HitlAction, AgentInterrupt,
+    InMemoryCheckpointer, AgentMessage, MessageContent, MessageRole,
+};
+use std::collections::HashMap;
+use std::sync::Arc;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Configure HITL policies
+    let mut policies = HashMap::new();
+    policies.insert(
+        "execute_command".to_string(),
+        HitlPolicy {
+            allow_auto: false,
+            note: Some("Shell commands require security review".to_string()),
+        }
+    );
+
+    // Build agent with HITL and checkpointer
+    let checkpointer = Arc::new(InMemoryCheckpointer::new());
+    let agent = ConfigurableAgentBuilder::new(
+        "You are a system administrator assistant."
+    )
+        .with_tool_interrupts(policies)
+        .with_checkpointer(checkpointer)
+        .build()?;
+
+    // User request triggers a tool requiring approval
+    let result = agent.handle_message(
+        "Run 'rm -rf /tmp/cache' to clear the cache",
+        Arc::new(AgentStateSnapshot::default())
+    ).await;
+
+    // Handle the interrupt
+    if result.is_err() {
+        if let Some(interrupt) = agent.current_interrupt().await? {
+            match interrupt {
+                AgentInterrupt::HumanInLoop(hitl) => {
+                    println!("⚠️  Approval Required");
+                    println!("Tool: {}", hitl.tool_name);
+                    println!("Command: {}", hitl.tool_args);
+                    
+                    // Human reviews and decides
+                    let user_decision = get_user_approval(); // Your UI logic
+                    
+                    match user_decision {
+                        "approve" => {
+                            agent.resume_with_approval(HitlAction::Accept).await?;
+                            println!("✅ Command executed");
+                        }
+                        "modify" => {
+                            // Safer alternative
+                            agent.resume_with_approval(HitlAction::Edit {
+                                tool_name: "execute_command".to_string(),
+                                tool_args: json!({"command": "rm -rf /tmp/cache/*.tmp"}),
+                            }).await?;
+                            println!("✅ Modified command executed");
+                        }
+                        "reject" => {
+                            agent.resume_with_approval(HitlAction::Reject {
+                                reason: Some("Too dangerous".to_string()),
+                            }).await?;
+                            println!("❌ Command rejected");
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn get_user_approval() -> &'static str {
+    // Your approval UI logic here
+    "approve"
+}
+```
+
+See [`examples/hitl-demo`](examples/hitl-demo) for a complete working example with OpenAI integration.
+
+#### HITL Best Practices
+
+1. **Always use a checkpointer**: HITL requires state persistence to work correctly
+2. **Provide clear policy notes**: Help humans understand why approval is needed
+3. **Handle all action types**: Support Accept, Edit, Reject, and Respond in your UI
+4. **Log interrupt decisions**: Maintain audit trails for compliance
+5. **Test interrupt scenarios**: Verify your approval workflow handles edge cases
+6. **Consider timeout policies**: Decide how long to wait for human response
+7. **Use appropriate granularity**: Not every tool needs approval - focus on critical operations
+
 ### Development Setup (From Source)
 
 ```bash
@@ -202,7 +431,11 @@ cargo run --example checkpointer-demo
 - **Planning Middleware**: Todo list management with comprehensive tool descriptions
 - **Filesystem Middleware**: Mock filesystem with `ls`, `read_file`, `write_file`, `edit_file` tools
 - **SubAgent Middleware**: Task delegation to specialized sub-agents
-- **HITL (Human-in-the-Loop)**: Tool interrupts with approval policies
+- **HITL (Human-in-the-Loop)**: Tool execution interrupts with approval policies
+  - Configurable per-tool approval requirements
+  - Support for Accept, Edit, Reject, and Respond actions
+  - Automatic state persistence with checkpointer integration
+  - Policy notes for human reviewers
 - **Summarization Middleware**: Context window management
 - **AnthropicPromptCaching**: Automatic prompt caching for efficiency
 

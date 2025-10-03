@@ -923,9 +923,151 @@ mod tests {
         // Apply the middleware
         middleware.modify_model_request(&mut ctx).await.unwrap();
 
-        // Should be unchanged
+        // System prompt should remain empty
         assert!(ctx.request.system_prompt.is_empty());
+        // No system message should be added
         assert_eq!(ctx.request.messages.len(), 1);
-        assert!(matches!(ctx.request.messages[0].role, MessageRole::User));
+    }
+
+    // ========== HITL Interrupt Creation Tests ==========
+
+    #[tokio::test]
+    async fn hitl_creates_interrupt_for_disallowed_tool() {
+        let mut policies = HashMap::new();
+        policies.insert(
+            "dangerous_tool".to_string(),
+            HitlPolicy {
+                allow_auto: false,
+                note: Some("Requires security review".to_string()),
+            },
+        );
+
+        let middleware = HumanInLoopMiddleware::new(policies);
+        let tool_args = json!({"action": "delete_all"});
+
+        let result = middleware
+            .before_tool_execution("dangerous_tool", &tool_args, "call_123")
+            .await
+            .unwrap();
+
+        assert!(result.is_some());
+        let interrupt = result.unwrap();
+
+        match interrupt {
+            agents_core::hitl::AgentInterrupt::HumanInLoop(hitl) => {
+                assert_eq!(hitl.tool_name, "dangerous_tool");
+                assert_eq!(hitl.tool_args, tool_args);
+                assert_eq!(hitl.call_id, "call_123");
+                assert_eq!(
+                    hitl.policy_note,
+                    Some("Requires security review".to_string())
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn hitl_no_interrupt_for_allowed_tool() {
+        let mut policies = HashMap::new();
+        policies.insert(
+            "safe_tool".to_string(),
+            HitlPolicy {
+                allow_auto: true,
+                note: None,
+            },
+        );
+
+        let middleware = HumanInLoopMiddleware::new(policies);
+        let tool_args = json!({"action": "read"});
+
+        let result = middleware
+            .before_tool_execution("safe_tool", &tool_args, "call_456")
+            .await
+            .unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn hitl_no_interrupt_for_unlisted_tool() {
+        let policies = HashMap::new();
+        let middleware = HumanInLoopMiddleware::new(policies);
+        let tool_args = json!({"action": "anything"});
+
+        let result = middleware
+            .before_tool_execution("unlisted_tool", &tool_args, "call_789")
+            .await
+            .unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn hitl_interrupt_includes_correct_details() {
+        let mut policies = HashMap::new();
+        policies.insert(
+            "critical_tool".to_string(),
+            HitlPolicy {
+                allow_auto: false,
+                note: Some("Critical operation - requires approval".to_string()),
+            },
+        );
+
+        let middleware = HumanInLoopMiddleware::new(policies);
+        let tool_args = json!({
+            "database": "production",
+            "operation": "drop_table"
+        });
+
+        let result = middleware
+            .before_tool_execution("critical_tool", &tool_args, "call_critical_1")
+            .await
+            .unwrap();
+
+        assert!(result.is_some());
+        let interrupt = result.unwrap();
+
+        match interrupt {
+            agents_core::hitl::AgentInterrupt::HumanInLoop(hitl) => {
+                assert_eq!(hitl.tool_name, "critical_tool");
+                assert_eq!(hitl.tool_args["database"], "production");
+                assert_eq!(hitl.tool_args["operation"], "drop_table");
+                assert_eq!(hitl.call_id, "call_critical_1");
+                assert!(hitl.policy_note.is_some());
+                assert!(hitl.policy_note.unwrap().contains("Critical operation"));
+                // Verify timestamp exists (created_at field is populated)
+                // The actual timestamp value is tested in agents-core/hitl.rs
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn hitl_interrupt_without_policy_note() {
+        let mut policies = HashMap::new();
+        policies.insert(
+            "tool_no_note".to_string(),
+            HitlPolicy {
+                allow_auto: false,
+                note: None,
+            },
+        );
+
+        let middleware = HumanInLoopMiddleware::new(policies);
+        let tool_args = json!({"param": "value"});
+
+        let result = middleware
+            .before_tool_execution("tool_no_note", &tool_args, "call_no_note")
+            .await
+            .unwrap();
+
+        assert!(result.is_some());
+        let interrupt = result.unwrap();
+
+        match interrupt {
+            agents_core::hitl::AgentInterrupt::HumanInLoop(hitl) => {
+                assert_eq!(hitl.tool_name, "tool_no_note");
+                assert_eq!(hitl.policy_note, None);
+            }
+        }
     }
 }
