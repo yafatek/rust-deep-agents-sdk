@@ -132,21 +132,14 @@ fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
         content: request.system_prompt.clone(),
     });
 
-    // Filter and validate message sequence for OpenAI compatibility
-    let mut last_was_tool_call = false;
-
+    // Convert all messages to OpenAI format
+    // Note: Tool messages are converted to user messages for compatibility
+    // since we don't have the full tool_calls metadata structure
     for msg in &request.messages {
         let role = match msg.role {
             MessageRole::User => "user",
             MessageRole::Agent => "assistant",
-            MessageRole::Tool => {
-                // Only include tool messages if they follow a tool call
-                if !last_was_tool_call {
-                    tracing::warn!("Skipping tool message without preceding tool_calls");
-                    continue;
-                }
-                "tool"
-            }
+            MessageRole::Tool => "user", // Convert tool results to user messages
             MessageRole::System => "system",
         };
 
@@ -154,10 +147,6 @@ fn to_openai_messages(request: &LlmRequest) -> Vec<OpenAiMessage> {
             MessageContent::Text(text) => text.clone(),
             MessageContent::Json(value) => value.to_string(),
         };
-
-        // Check if this assistant message contains tool calls
-        last_was_tool_call =
-            matches!(msg.role, MessageRole::Agent) && content.contains("tool_calls");
 
         messages.push(OpenAiMessage { role, content });
     }

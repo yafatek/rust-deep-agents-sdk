@@ -2505,6 +2505,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "react-loop-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-core",
+ "agents-sdk",
+ "anyhow",
+ "async-trait",
+ "dotenvy",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "redis"
 version = "0.27.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

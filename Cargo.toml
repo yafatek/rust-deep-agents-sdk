@@ -21,6 +21,7 @@ members = [
     "examples/deep-agent-test",
     "examples/hitl-demo",
     "examples/hitl-financial-advisor",
+    "examples/react-loop-demo",
 ]
 resolver = "2"
 
