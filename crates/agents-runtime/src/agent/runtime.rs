@@ -319,182 +319,206 @@ impl DeepAgent {
     ) -> anyhow::Result<AgentMessage> {
         self.append_history(input.clone());
 
-        // Build request with current history
-        let mut request = ModelRequest::new(&self.instructions, self.current_history());
-        let tools = self.collect_tools();
-        for middleware in &self.middlewares {
-            let mut ctx = MiddlewareContext::with_request(&mut request, self.state.clone());
-            middleware.modify_model_request(&mut ctx).await?;
-        }
+        // ReAct loop: continue until LLM responds with text (not tool calls)
+        let max_iterations = 10;
+        let mut iteration = 0;
 
-        let tool_schemas: Vec<_> = tools.values().map(|t| t.schema()).collect();
-        let context = PlannerContext {
-            history: request.messages.clone(),
-            system_prompt: request.system_prompt.clone(),
-            tools: tool_schemas,
-        };
-        let state_snapshot = Arc::new(self.state.read().map(|s| s.clone()).unwrap_or_default());
-
-        // Ask LLM what to do
-        let decision = self.planner.plan(context, state_snapshot).await?;
-
-        match decision.next_action {
-            PlannerAction::Respond { message } => {
-                self.append_history(message.clone());
-                Ok(message)
+        loop {
+            iteration += 1;
+            if iteration > max_iterations {
+                tracing::warn!(
+                    "⚠️ Max iterations ({}) reached, stopping ReAct loop",
+                    max_iterations
+                );
+                let response = AgentMessage {
+                    role: MessageRole::Agent,
+                    content: MessageContent::Text(
+                        "I've reached the maximum number of steps. Let me summarize what I've done so far.".to_string()
+                    ),
+                    metadata: None,
+                };
+                self.append_history(response.clone());
+                return Ok(response);
             }
-            PlannerAction::CallTool { tool_name, payload } => {
-                if let Some(tool) = tools.get(&tool_name).cloned() {
-                    // Check all middleware for interrupts before executing tool
-                    let call_id = format!("call_{}", uuid::Uuid::new_v4());
-                    for middleware in &self.middlewares {
-                        if let Some(interrupt) = middleware
-                            .before_tool_execution(&tool_name, &payload, &call_id)
-                            .await?
-                        {
-                            // Save interrupt to state
-                            {
-                                let mut state_guard = self.state.write().map_err(|_| {
-                                    anyhow::anyhow!("Failed to acquire write lock on state")
-                                })?;
-                                state_guard.add_interrupt(interrupt.clone());
-                            }
 
-                            // Persist state with checkpointer
-                            if let Some(checkpointer) = &self.checkpointer {
-                                let state_clone = self
-                                    .state
-                                    .read()
-                                    .map_err(|_| {
-                                        anyhow::anyhow!("Failed to acquire read lock on state")
-                                    })?
-                                    .clone();
-                                checkpointer
-                                    .save_state(&ThreadId::default(), &state_clone)
-                                    .await?;
-                            }
+            tracing::debug!("🔄 ReAct iteration {}/{}", iteration, max_iterations);
 
-                            // Return interrupt message - execution pauses here
-                            let interrupt_message = AgentMessage {
-                                role: MessageRole::System,
-                                content: MessageContent::Text(format!(
-                                    "⏸️ Execution paused: Tool '{}' requires human approval",
-                                    tool_name
-                                )),
-                                metadata: None,
-                            };
-                            self.append_history(interrupt_message.clone());
-                            return Ok(interrupt_message);
-                        }
-                    }
+            // Build request with current history
+            let mut request = ModelRequest::new(&self.instructions, self.current_history());
+            let tools = self.collect_tools();
+            for middleware in &self.middlewares {
+                let mut ctx = MiddlewareContext::with_request(&mut request, self.state.clone());
+                middleware.modify_model_request(&mut ctx).await?;
+            }
 
-                    // No interrupt - execute tool
-                    let start_time = std::time::Instant::now();
-                    tracing::warn!(
-                        "⚙️ EXECUTING TOOL: {} with payload: {}",
-                        tool_name,
-                        serde_json::to_string(&payload)
-                            .unwrap_or_else(|_| "invalid json".to_string())
-                    );
+            let tool_schemas: Vec<_> = tools.values().map(|t| t.schema()).collect();
+            let context = PlannerContext {
+                history: request.messages.clone(),
+                system_prompt: request.system_prompt.clone(),
+                tools: tool_schemas,
+            };
+            let state_snapshot = Arc::new(self.state.read().map(|s| s.clone()).unwrap_or_default());
 
-                    let result = self
-                        .execute_tool(tool.clone(), tool_name.clone(), payload.clone())
-                        .await;
+            // Ask LLM what to do
+            let decision = self.planner.plan(context, state_snapshot).await?;
 
-                    let duration = start_time.elapsed();
-                    match result {
-                        Ok(tool_result_message) => {
-                            let content_preview = match &tool_result_message.content {
-                                MessageContent::Text(t) => {
-                                    if t.len() > 100 {
-                                        format!("{}... ({} chars)", &t[..100], t.len())
-                                    } else {
-                                        t.clone()
-                                    }
-                                }
-                                MessageContent::Json(v) => {
-                                    format!("JSON: {} bytes", v.to_string().len())
-                                }
-                            };
-                            tracing::warn!(
-                                "✅ TOOL COMPLETED: {} in {:?} - Result: {}",
-                                tool_name,
-                                duration,
-                                content_preview
-                            );
-
-                            // Tool executed successfully - now respond naturally
-                            // Create a natural response incorporating the tool result
-                            let natural_response = match &tool_result_message.content {
-                                MessageContent::Text(text) => {
-                                    if text.is_empty() {
-                                        format!(
-                                            "I've executed the {} tool successfully.",
-                                            tool_name
-                                        )
-                                    } else {
-                                        // Include the tool result in the response
-                                        text.clone()
-                                    }
-                                }
-                                MessageContent::Json(json) => {
-                                    format!("Tool result: {}", json)
-                                }
-                            };
-
-                            let response = AgentMessage {
-                                role: MessageRole::Agent,
-                                content: MessageContent::Text(natural_response),
-                                metadata: None,
-                            };
-                            self.append_history(response.clone());
-                            Ok(response)
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "❌ TOOL FAILED: {} in {:?} - Error: {}",
-                                tool_name,
-                                duration,
-                                e
-                            );
-
-                            // Tool failed - respond with error message
-                            let error_response = AgentMessage {
-                                role: MessageRole::Agent,
-                                content: MessageContent::Text(format!(
-                                    "I encountered an error while executing {}: {}",
-                                    tool_name, e
-                                )),
-                                metadata: None,
-                            };
-                            self.append_history(error_response.clone());
-                            Ok(error_response)
-                        }
-                    }
-                } else {
-                    // Tool not found
-                    tracing::warn!("⚠️ Tool '{}' not found", tool_name);
-                    let error_response = AgentMessage {
+            match decision.next_action {
+                PlannerAction::Respond { message } => {
+                    // LLM decided to respond with text - exit loop
+                    self.append_history(message.clone());
+                    return Ok(message);
+                }
+                PlannerAction::CallTool { tool_name, payload } => {
+                    // Add AI's decision to call tool to history
+                    // This is needed for OpenAI's API which expects:
+                    // 1. Assistant message with tool call
+                    // 2. Tool message with result
+                    let tool_call_message = AgentMessage {
                         role: MessageRole::Agent,
                         content: MessageContent::Text(format!(
-                            "I don't have access to the '{}' tool.",
-                            tool_name
+                            "Calling tool: {} with args: {}",
+                            tool_name,
+                            serde_json::to_string(&payload).unwrap_or_default()
                         )),
                         metadata: None,
                     };
-                    self.append_history(error_response.clone());
-                    Ok(error_response)
+                    self.append_history(tool_call_message);
+
+                    if let Some(tool) = tools.get(&tool_name).cloned() {
+                        // Check all middleware for interrupts before executing tool
+                        let call_id = format!("call_{}", uuid::Uuid::new_v4());
+                        for middleware in &self.middlewares {
+                            if let Some(interrupt) = middleware
+                                .before_tool_execution(&tool_name, &payload, &call_id)
+                                .await?
+                            {
+                                // Save interrupt to state
+                                {
+                                    let mut state_guard = self.state.write().map_err(|_| {
+                                        anyhow::anyhow!("Failed to acquire write lock on state")
+                                    })?;
+                                    state_guard.add_interrupt(interrupt.clone());
+                                }
+
+                                // Persist state with checkpointer
+                                if let Some(checkpointer) = &self.checkpointer {
+                                    let state_clone = self
+                                        .state
+                                        .read()
+                                        .map_err(|_| {
+                                            anyhow::anyhow!("Failed to acquire read lock on state")
+                                        })?
+                                        .clone();
+                                    checkpointer
+                                        .save_state(&ThreadId::default(), &state_clone)
+                                        .await?;
+                                }
+
+                                // Return interrupt message - execution pauses here
+                                let interrupt_message = AgentMessage {
+                                    role: MessageRole::System,
+                                    content: MessageContent::Text(format!(
+                                        "⏸️ Execution paused: Tool '{}' requires human approval",
+                                        tool_name
+                                    )),
+                                    metadata: None,
+                                };
+                                self.append_history(interrupt_message.clone());
+                                return Ok(interrupt_message);
+                            }
+                        }
+
+                        // No interrupt - execute tool
+                        let start_time = std::time::Instant::now();
+                        tracing::warn!(
+                            "⚙️ EXECUTING TOOL: {} with payload: {}",
+                            tool_name,
+                            serde_json::to_string(&payload)
+                                .unwrap_or_else(|_| "invalid json".to_string())
+                        );
+
+                        let result = self
+                            .execute_tool(tool.clone(), tool_name.clone(), payload.clone())
+                            .await;
+
+                        let duration = start_time.elapsed();
+                        match result {
+                            Ok(tool_result_message) => {
+                                let content_preview = match &tool_result_message.content {
+                                    MessageContent::Text(t) => {
+                                        if t.len() > 100 {
+                                            format!("{}... ({} chars)", &t[..100], t.len())
+                                        } else {
+                                            t.clone()
+                                        }
+                                    }
+                                    MessageContent::Json(v) => {
+                                        format!("JSON: {} bytes", v.to_string().len())
+                                    }
+                                };
+                                tracing::warn!(
+                                    "✅ TOOL COMPLETED: {} in {:?} - Result: {}",
+                                    tool_name,
+                                    duration,
+                                    content_preview
+                                );
+
+                                // Add tool result to history and continue ReAct loop
+                                self.append_history(tool_result_message);
+                                // Loop continues - LLM will see tool result and decide next action
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "❌ TOOL FAILED: {} in {:?} - Error: {}",
+                                    tool_name,
+                                    duration,
+                                    e
+                                );
+
+                                // Add error to history and continue - let LLM handle the error
+                                let error_message = AgentMessage {
+                                    role: MessageRole::Tool,
+                                    content: MessageContent::Text(format!(
+                                        "Error executing {}: {}",
+                                        tool_name, e
+                                    )),
+                                    metadata: None,
+                                };
+                                self.append_history(error_message);
+                                // Loop continues - LLM will see error and decide how to handle it
+                            }
+                        }
+                    } else {
+                        // Tool not found - add error to history and continue
+                        tracing::warn!("⚠️ Tool '{}' not found", tool_name);
+                        let error_message = AgentMessage {
+                            role: MessageRole::Tool,
+                            content: MessageContent::Text(format!(
+                                "Tool '{}' not found. Available tools: {}",
+                                tool_name,
+                                tools
+                                    .keys()
+                                    .map(|k| k.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )),
+                            metadata: None,
+                        };
+                        self.append_history(error_message);
+                        // Loop continues - LLM will see error and try something else
+                    }
                 }
-            }
-            PlannerAction::Terminate => {
-                tracing::debug!("🛑 Agent terminated");
-                let message = AgentMessage {
-                    role: MessageRole::Agent,
-                    content: MessageContent::Text("Task completed.".into()),
-                    metadata: None,
-                };
-                self.append_history(message.clone());
-                Ok(message)
+                PlannerAction::Terminate => {
+                    // LLM decided to terminate - exit loop
+                    tracing::debug!("🛑 Agent terminated");
+                    let message = AgentMessage {
+                        role: MessageRole::Agent,
+                        content: MessageContent::Text("Task completed.".into()),
+                        metadata: None,
+                    };
+                    self.append_history(message.clone());
+                    return Ok(message);
+                }
             }
         }
     }

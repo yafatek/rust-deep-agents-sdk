@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.13] - 2025-10-06
+
+### Fixed
+- **CRITICAL: ReAct Loop Implementation**: Fixed missing conversation continuation after tool execution
+  - Agents now properly continue the ReAct (Reason + Act) loop after executing tools
+  - Tool results are added to conversation history and LLM is called again to decide next action
+  - Enables multi-tool workflows where agents can call multiple tools in sequence
+  - Added loop protection (max 10 iterations) to prevent infinite loops
+  - Before this fix, agents would return tool results directly instead of continuing to reason
+
+### Added
+- **ReAct Loop Demo Example**: New example demonstrating multi-tool calling in sequence
+  - Shows how an agent searches for services then generates a quote (2 tool calls)
+  - Demonstrates the proper ReAct pattern implementation
+
 ## [0.0.12] - 2025-01-10
 
 ### Added
