@@ -1,6 +1,6 @@
 [package]
 name = "agents-core"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2021"
 description = "Core traits, data models, and prompt primitives for building deep agents."
 authors = ["YAFATEK <hello@yafatek.dev>"]
