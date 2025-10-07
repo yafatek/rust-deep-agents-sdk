@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.15] - 2025-10-07
+
+### Fixed
+- **Redis TLS Support**: Added `tokio-native-tls-comp` feature to Redis dependency in `agents-persistence`
+  - Enables secure connections to AWS ElastiCache Serverless Redis using `rediss://` URLs
+  - Required for production deployments in AWS environments
+  - Fixes "Failed to create Redis client" error when connecting to TLS-enabled Redis instances
+
 ## [0.0.14] - 2025-10-06
 
 ### Fixed

@@ -1,6 +1,6 @@
 [package]
 name = "agents-persistence"
-version = "0.0.14"
+version = "0.0.15"
 edition = "2021"
 description = "Database-backed persistence implementations for the Rust deep agents SDK (Redis, PostgreSQL)"
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -13,7 +13,7 @@ categories = ["api-bindings", "database", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core", version = "0.0.14" }
+agents-core = { path = "../agents-core", version = "0.0.15" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -21,8 +21,8 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
-# Redis backend (optional)
-redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+# Redis backend (optional) with TLS support for AWS ElastiCache
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "tokio-native-tls-comp"], optional = true }
 
 # PostgreSQL backend (optional)
 sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "json"], optional = true }
