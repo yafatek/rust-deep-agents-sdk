@@ -29,6 +29,23 @@ const BUILTIN_TOOL_NAMES: &[&str] = &["write_todos", "ls", "read_file", "write_f
 
 // (no streaming types in baseline)
 
+/// Helper function to count todos by status
+fn count_todos(todos: &[agents_core::state::TodoItem]) -> (usize, usize, usize) {
+    let mut pending = 0;
+    let mut in_progress = 0;
+    let mut completed = 0;
+
+    for todo in todos {
+        match todo.status {
+            agents_core::state::TodoStatus::Pending => pending += 1,
+            agents_core::state::TodoStatus::InProgress => in_progress += 1,
+            agents_core::state::TodoStatus::Completed => completed += 1,
+        }
+    }
+
+    (pending, in_progress, completed)
+}
+
 /// Core Deep Agent runtime implementation
 ///
 /// This struct contains all the runtime state and behavior for a Deep Agent,
@@ -45,6 +62,7 @@ pub struct DeepAgent {
     _hitl: Option<Arc<HumanInLoopMiddleware>>,
     builtin_tools: Option<HashSet<String>>,
     checkpointer: Option<Arc<dyn Checkpointer>>,
+    event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
 }
 
 impl DeepAgent {
@@ -86,6 +104,44 @@ impl DeepAgent {
         self.history.read().map(|h| h.clone()).unwrap_or_default()
     }
 
+    fn emit_event(&self, event: agents_core::events::AgentEvent) {
+        if let Some(dispatcher) = &self.event_dispatcher {
+            let dispatcher_clone = dispatcher.clone();
+            tokio::spawn(async move {
+                dispatcher_clone.dispatch(event).await;
+            });
+        }
+    }
+
+    fn create_event_metadata(&self) -> agents_core::events::EventMetadata {
+        agents_core::events::EventMetadata::new(
+            "default".to_string(),
+            uuid::Uuid::new_v4().to_string(),
+            None,
+        )
+    }
+
+    fn truncate_message(&self, message: &AgentMessage) -> String {
+        let text = match &message.content {
+            MessageContent::Text(t) => t.clone(),
+            MessageContent::Json(v) => v.to_string(),
+        };
+        if text.len() > 100 {
+            format!("{}...", &text[..100])
+        } else {
+            text
+        }
+    }
+
+    fn summarize_payload(&self, payload: &Value) -> String {
+        let json_str = payload.to_string();
+        if json_str.len() > 100 {
+            format!("{}...", &json_str[..100])
+        } else {
+            json_str
+        }
+    }
+
     /// Save the current agent state to the configured checkpointer.
     pub async fn save_state(&self, thread_id: &ThreadId) -> anyhow::Result<()> {
         if let Some(ref checkpointer) = self.checkpointer {
@@ -94,7 +150,30 @@ impl DeepAgent {
                 .read()
                 .map_err(|_| anyhow::anyhow!("Failed to read agent state"))?
                 .clone();
-            checkpointer.save_state(thread_id, &state).await
+
+            // Calculate state size before saving
+            let state_json = serde_json::to_string(&state)?;
+            let state_size = state_json.len();
+
+            // Save state to checkpointer
+            checkpointer.save_state(thread_id, &state).await?;
+
+            // Emit StateCheckpointed event after successful save
+            self.emit_event(agents_core::events::AgentEvent::StateCheckpointed(
+                agents_core::events::StateCheckpointedEvent {
+                    metadata: self.create_event_metadata(),
+                    checkpoint_id: thread_id.to_string(),
+                    state_size_bytes: state_size,
+                },
+            ));
+
+            tracing::debug!(
+                thread_id = %thread_id,
+                state_size_bytes = state_size,
+                "💾 State checkpointed and event emitted"
+            );
+
+            Ok(())
         } else {
             tracing::warn!("Attempted to save state but no checkpointer is configured");
             Ok(())
@@ -164,9 +243,37 @@ impl DeepAgent {
                 message,
                 state_diff,
             } => {
+                // Check if todos were updated
+                let todos_updated = state_diff.todos.is_some();
+
                 if let Ok(mut state) = self.state.write() {
                     let command = agents_core::command::Command::with_state(state_diff);
                     command.apply_to(&mut state);
+
+                    // Emit TodosUpdated event if todos were modified
+                    if todos_updated {
+                        let (pending_count, in_progress_count, completed_count) =
+                            count_todos(&state.todos);
+
+                        self.emit_event(agents_core::events::AgentEvent::TodosUpdated(
+                            agents_core::events::TodosUpdatedEvent {
+                                metadata: self.create_event_metadata(),
+                                todos: state.todos.clone(),
+                                pending_count,
+                                in_progress_count,
+                                completed_count,
+                                last_updated: chrono::Utc::now().to_rfc3339(),
+                            },
+                        ));
+
+                        tracing::debug!(
+                            pending = pending_count,
+                            in_progress = in_progress_count,
+                            completed = completed_count,
+                            total = state.todos.len(),
+                            "📝 Todos updated and event emitted"
+                        );
+                    }
                 }
                 // Tool results are not added to conversation history
                 // Only the final LLM response after tool execution is added
@@ -317,6 +424,16 @@ impl DeepAgent {
         input: AgentMessage,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<AgentMessage> {
+        let start_time = std::time::Instant::now();
+
+        self.emit_event(agents_core::events::AgentEvent::AgentStarted(
+            agents_core::events::AgentStartedEvent {
+                metadata: self.create_event_metadata(),
+                agent_name: self.descriptor.name.clone(),
+                message_preview: self.truncate_message(&input),
+            },
+        ));
+
         self.append_history(input.clone());
 
         // ReAct loop: continue until LLM responds with text (not tool calls)
@@ -362,9 +479,39 @@ impl DeepAgent {
             // Ask LLM what to do
             let decision = self.planner.plan(context, state_snapshot).await?;
 
+            // Emit PlanningComplete event
+            self.emit_event(agents_core::events::AgentEvent::PlanningComplete(
+                agents_core::events::PlanningCompleteEvent {
+                    metadata: self.create_event_metadata(),
+                    action_type: match &decision.next_action {
+                        PlannerAction::Respond { .. } => "respond".to_string(),
+                        PlannerAction::CallTool { .. } => "call_tool".to_string(),
+                        PlannerAction::Terminate => "terminate".to_string(),
+                    },
+                    action_summary: match &decision.next_action {
+                        PlannerAction::Respond { message } => {
+                            format!("Respond: {}", self.truncate_message(message))
+                        }
+                        PlannerAction::CallTool { tool_name, .. } => {
+                            format!("Call tool: {}", tool_name)
+                        }
+                        PlannerAction::Terminate => "Terminate".to_string(),
+                    },
+                },
+            ));
+
             match decision.next_action {
                 PlannerAction::Respond { message } => {
                     // LLM decided to respond with text - exit loop
+                    self.emit_event(agents_core::events::AgentEvent::AgentCompleted(
+                        agents_core::events::AgentCompletedEvent {
+                            metadata: self.create_event_metadata(),
+                            agent_name: self.descriptor.name.clone(),
+                            duration_ms: start_time.elapsed().as_millis() as u64,
+                            response_preview: self.truncate_message(&message),
+                        },
+                    ));
+
                     self.append_history(message.clone());
                     return Ok(message);
                 }
@@ -429,7 +576,16 @@ impl DeepAgent {
                         }
 
                         // No interrupt - execute tool
-                        let start_time = std::time::Instant::now();
+                        let tool_start_time = std::time::Instant::now();
+
+                        self.emit_event(agents_core::events::AgentEvent::ToolStarted(
+                            agents_core::events::ToolStartedEvent {
+                                metadata: self.create_event_metadata(),
+                                tool_name: tool_name.clone(),
+                                input_summary: self.summarize_payload(&payload),
+                            },
+                        ));
+
                         tracing::warn!(
                             "⚙️ EXECUTING TOOL: {} with payload: {}",
                             tool_name,
@@ -441,7 +597,7 @@ impl DeepAgent {
                             .execute_tool(tool.clone(), tool_name.clone(), payload.clone())
                             .await;
 
-                        let duration = start_time.elapsed();
+                        let duration = tool_start_time.elapsed();
                         match result {
                             Ok(tool_result_message) => {
                                 let content_preview = match &tool_result_message.content {
@@ -456,6 +612,17 @@ impl DeepAgent {
                                         format!("JSON: {} bytes", v.to_string().len())
                                     }
                                 };
+
+                                self.emit_event(agents_core::events::AgentEvent::ToolCompleted(
+                                    agents_core::events::ToolCompletedEvent {
+                                        metadata: self.create_event_metadata(),
+                                        tool_name: tool_name.clone(),
+                                        duration_ms: duration.as_millis() as u64,
+                                        result_summary: content_preview.clone(),
+                                        success: true,
+                                    },
+                                ));
+
                                 tracing::warn!(
                                     "✅ TOOL COMPLETED: {} in {:?} - Result: {}",
                                     tool_name,
@@ -468,6 +635,17 @@ impl DeepAgent {
                                 // Loop continues - LLM will see tool result and decide next action
                             }
                             Err(e) => {
+                                self.emit_event(agents_core::events::AgentEvent::ToolFailed(
+                                    agents_core::events::ToolFailedEvent {
+                                        metadata: self.create_event_metadata(),
+                                        tool_name: tool_name.clone(),
+                                        duration_ms: duration.as_millis() as u64,
+                                        error_message: e.to_string(),
+                                        is_recoverable: true,
+                                        retry_count: 0,
+                                    },
+                                ));
+
                                 tracing::error!(
                                     "❌ TOOL FAILED: {} in {:?} - Error: {}",
                                     tool_name,
@@ -691,7 +869,10 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         }
     }
 
-    let subagent = Arc::new(SubAgentMiddleware::new(registrations));
+    let subagent = Arc::new(SubAgentMiddleware::new_with_events(
+        registrations,
+        config.event_dispatcher.clone(),
+    ));
     let base_prompt = Arc::new(BaseSystemPromptMiddleware);
     let deep_agent_prompt = Arc::new(DeepAgentPromptMiddleware::new(config.instructions.clone()));
     let summarization = config.summarization.as_ref().map(|cfg| {
@@ -753,5 +934,6 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         _hitl: hitl,
         builtin_tools: config.builtin_tools,
         checkpointer: config.checkpointer,
+        event_dispatcher: config.event_dispatcher,
     }
 }

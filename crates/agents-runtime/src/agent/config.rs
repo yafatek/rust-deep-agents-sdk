@@ -51,6 +51,7 @@ pub struct DeepAgentConfig {
     pub auto_general_purpose: bool,
     pub enable_prompt_caching: bool,
     pub checkpointer: Option<Arc<dyn Checkpointer>>,
+    pub event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
 }
 
 impl DeepAgentConfig {
@@ -66,6 +67,7 @@ impl DeepAgentConfig {
             auto_general_purpose: true,
             enable_prompt_caching: false,
             checkpointer: None,
+            event_dispatcher: None,
         }
     }
 
@@ -129,6 +131,29 @@ impl DeepAgentConfig {
     /// Set the checkpointer for persisting agent state between runs.
     pub fn with_checkpointer(mut self, checkpointer: Arc<dyn Checkpointer>) -> Self {
         self.checkpointer = Some(checkpointer);
+        self
+    }
+
+    /// Add an event broadcaster to the agent's event dispatcher.
+    pub fn with_event_broadcaster(
+        mut self,
+        broadcaster: Arc<dyn agents_core::events::EventBroadcaster>,
+    ) -> Self {
+        if self.event_dispatcher.is_none() {
+            self.event_dispatcher = Some(Arc::new(agents_core::events::EventDispatcher::new()));
+        }
+        if let Some(dispatcher) = Arc::get_mut(self.event_dispatcher.as_mut().unwrap()) {
+            dispatcher.add_broadcaster(broadcaster);
+        }
+        self
+    }
+
+    /// Set the event dispatcher directly.
+    pub fn with_event_dispatcher(
+        mut self,
+        dispatcher: Arc<agents_core::events::EventDispatcher>,
+    ) -> Self {
+        self.event_dispatcher = Some(dispatcher);
         self
     }
 }

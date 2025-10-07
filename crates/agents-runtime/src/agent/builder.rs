@@ -32,6 +32,7 @@ pub struct ConfigurableAgentBuilder {
     auto_general_purpose: bool,
     enable_prompt_caching: bool,
     checkpointer: Option<Arc<dyn Checkpointer>>,
+    event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
 }
 
 impl ConfigurableAgentBuilder {
@@ -47,6 +48,7 @@ impl ConfigurableAgentBuilder {
             auto_general_purpose: true,
             enable_prompt_caching: false,
             checkpointer: None,
+            event_dispatcher: None,
         }
     }
 
@@ -160,6 +162,27 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    pub fn with_event_broadcaster(
+        mut self,
+        broadcaster: Arc<dyn agents_core::events::EventBroadcaster>,
+    ) -> Self {
+        if self.event_dispatcher.is_none() {
+            self.event_dispatcher = Some(Arc::new(agents_core::events::EventDispatcher::new()));
+        }
+        if let Some(dispatcher) = Arc::get_mut(self.event_dispatcher.as_mut().unwrap()) {
+            dispatcher.add_broadcaster(broadcaster);
+        }
+        self
+    }
+
+    pub fn with_event_dispatcher(
+        mut self,
+        dispatcher: Arc<agents_core::events::EventDispatcher>,
+    ) -> Self {
+        self.event_dispatcher = Some(dispatcher);
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<DeepAgent> {
         self.finalize(create_deep_agent_from_config)
     }
@@ -182,6 +205,7 @@ impl ConfigurableAgentBuilder {
             auto_general_purpose,
             enable_prompt_caching,
             checkpointer,
+            event_dispatcher,
         } = self;
 
         let planner = planner
@@ -193,6 +217,9 @@ impl ConfigurableAgentBuilder {
 
         if let Some(ckpt) = checkpointer {
             cfg = cfg.with_checkpointer(ckpt);
+        }
+        if let Some(dispatcher) = event_dispatcher {
+            cfg = cfg.with_event_dispatcher(dispatcher);
         }
         if let Some(sum) = summarization {
             cfg = cfg.with_summarization(sum);

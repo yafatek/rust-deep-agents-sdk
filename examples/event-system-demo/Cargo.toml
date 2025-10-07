@@ -1,0 +1,18 @@
+[package]
+name = "event-system-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agents-core = { path = "../../crates/agents-core" }
+agents-sdk = { path = "../../crates/agents-sdk" }
+agents-macros = { path = "../../crates/agents-macros" }
+anyhow = "1"
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+dotenvy = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.11", features = ["json"] }
