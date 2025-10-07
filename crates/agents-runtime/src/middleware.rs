@@ -230,7 +230,21 @@ impl SubAgentMiddleware {
     pub fn new(registrations: Vec<SubAgentRegistration>) -> Self {
         let descriptors = registrations.iter().map(|r| r.descriptor.clone()).collect();
         let registry = Arc::new(SubAgentRegistry::new(registrations));
-        let task_tool: ToolBox = Arc::new(TaskRouterTool::new(registry.clone()));
+        let task_tool: ToolBox = Arc::new(TaskRouterTool::new(registry.clone(), None));
+        Self {
+            task_tool,
+            descriptors,
+            _registry: registry,
+        }
+    }
+
+    pub fn new_with_events(
+        registrations: Vec<SubAgentRegistration>,
+        event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    ) -> Self {
+        let descriptors = registrations.iter().map(|r| r.descriptor.clone()).collect();
+        let registry = Arc::new(SubAgentRegistry::new(registrations));
+        let task_tool: ToolBox = Arc::new(TaskRouterTool::new(registry.clone(), event_dispatcher));
         Self {
             task_tool,
             descriptors,
@@ -480,15 +494,62 @@ impl AgentMiddleware for AnthropicPromptCachingMiddleware {
 
 pub struct TaskRouterTool {
     registry: Arc<SubAgentRegistry>,
+    event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    delegation_depth: Arc<RwLock<u32>>,
 }
 
 impl TaskRouterTool {
-    fn new(registry: Arc<SubAgentRegistry>) -> Self {
-        Self { registry }
+    fn new(
+        registry: Arc<SubAgentRegistry>,
+        event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    ) -> Self {
+        Self {
+            registry,
+            event_dispatcher,
+            delegation_depth: Arc::new(RwLock::new(0)),
+        }
     }
 
     fn available_subagents(&self) -> Vec<String> {
         self.registry.available_names()
+    }
+
+    fn emit_event(&self, event: agents_core::events::AgentEvent) {
+        if let Some(dispatcher) = &self.event_dispatcher {
+            let dispatcher_clone = dispatcher.clone();
+            tokio::spawn(async move {
+                dispatcher_clone.dispatch(event).await;
+            });
+        }
+    }
+
+    fn create_event_metadata(&self) -> agents_core::events::EventMetadata {
+        agents_core::events::EventMetadata::new(
+            "default".to_string(),
+            uuid::Uuid::new_v4().to_string(),
+            None,
+        )
+    }
+
+    fn get_delegation_depth(&self) -> u32 {
+        *self.delegation_depth.read().unwrap_or_else(|_| {
+            tracing::warn!("Failed to read delegation depth, defaulting to 0");
+            panic!("RwLock poisoned")
+        })
+    }
+
+    fn increment_delegation_depth(&self) {
+        if let Ok(mut depth) = self.delegation_depth.write() {
+            *depth += 1;
+        }
+    }
+
+    fn decrement_delegation_depth(&self) {
+        if let Ok(mut depth) = self.delegation_depth.write() {
+            if *depth > 0 {
+                *depth -= 1;
+            }
+        }
     }
 }
 
@@ -536,10 +597,32 @@ impl Tool for TaskRouterTool {
         let available = self.available_subagents();
 
         if let Some(agent) = self.registry.get(&args.agent) {
+            // Increment delegation depth
+            self.increment_delegation_depth();
+            let current_depth = self.get_delegation_depth();
+
+            // Truncate instruction for event
+            let instruction_summary = if args.instruction.len() > 100 {
+                format!("{}...", &args.instruction[..100])
+            } else {
+                args.instruction.clone()
+            };
+
+            // Emit: SubAgentStarted event
+            self.emit_event(agents_core::events::AgentEvent::SubAgentStarted(
+                agents_core::events::SubAgentStartedEvent {
+                    metadata: self.create_event_metadata(),
+                    agent_name: args.agent.clone(),
+                    instruction_summary: instruction_summary.clone(),
+                    delegation_depth: current_depth,
+                },
+            ));
+
             // Log delegation start
             tracing::warn!(
-                "🎯 DELEGATING to sub-agent: {} with instruction: {}",
+                "🎯 DELEGATING to sub-agent: {} (depth: {}) with instruction: {}",
                 args.agent,
+                current_depth,
                 args.instruction
             );
 
@@ -554,27 +637,49 @@ impl Tool for TaskRouterTool {
                 .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
                 .await?;
 
-            // Log delegation completion
+            // Calculate duration
             let duration = start_time.elapsed();
+            let duration_ms = duration.as_millis() as u64;
+
+            // Create response preview
             let response_preview = match &response.content {
                 MessageContent::Text(t) => {
                     if t.len() > 100 {
-                        format!("{}... ({} chars)", &t[..100], t.len())
+                        format!("{}...", &t[..100])
                     } else {
                         t.clone()
                     }
                 }
                 MessageContent::Json(v) => {
-                    format!("JSON: {} bytes", v.to_string().len())
+                    let json_str = v.to_string();
+                    if json_str.len() > 100 {
+                        format!("{}...", &json_str[..100])
+                    } else {
+                        json_str
+                    }
                 }
             };
 
+            // Emit: SubAgentCompleted event
+            self.emit_event(agents_core::events::AgentEvent::SubAgentCompleted(
+                agents_core::events::SubAgentCompletedEvent {
+                    metadata: self.create_event_metadata(),
+                    agent_name: args.agent.clone(),
+                    duration_ms,
+                    result_summary: response_preview.clone(),
+                },
+            ));
+
+            // Log delegation completion
             tracing::warn!(
                 "✅ SUB-AGENT {} COMPLETED in {:?} - Response: {}",
                 args.agent,
                 duration,
                 response_preview
             );
+
+            // Decrement delegation depth
+            self.decrement_delegation_depth();
 
             // Return sub-agent response as text content, not as a separate tool message
             // This will be incorporated into the LLM's next response naturally
@@ -745,7 +850,7 @@ mod tests {
     #[tokio::test]
     async fn task_router_reports_unknown_subagent() {
         let registry = Arc::new(SubAgentRegistry::new(vec![]));
-        let task_tool = TaskRouterTool::new(registry.clone());
+        let task_tool = TaskRouterTool::new(registry.clone(), None);
         let state = Arc::new(AgentStateSnapshot::default());
         let ctx = ToolContext::new(state);
 
@@ -805,7 +910,7 @@ mod tests {
             },
             agent: Arc::new(StubAgent),
         }]));
-        let task_tool = TaskRouterTool::new(registry.clone());
+        let task_tool = TaskRouterTool::new(registry.clone(), None);
         let state = Arc::new(AgentStateSnapshot::default());
         let ctx = ToolContext::new(state).with_call_id(Some("call-42".into()));
         let response = task_tool

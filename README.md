@@ -452,6 +452,76 @@ cargo run --example deep-research-agent
 cargo run --example checkpointer-demo
 ```
 
+## Event System
+
+The SDK includes a powerful event broadcasting system for real-time progress tracking and multi-channel notifications.
+
+### Quick Start
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, EventDispatcher, EventBroadcaster};
+use agents_core::events::AgentEvent;
+use async_trait::async_trait;
+use std::sync::Arc;
+
+// Define a custom broadcaster
+struct ConsoleLogger;
+
+#[async_trait]
+impl EventBroadcaster for ConsoleLogger {
+    fn id(&self) -> &str {
+        "console"
+    }
+    
+    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
+        match event {
+            AgentEvent::AgentStarted(e) => println!("🚀 Agent started: {}", e.agent_name),
+            AgentEvent::ToolStarted(e) => println!("🔧 Tool started: {}", e.tool_name),
+            AgentEvent::ToolCompleted(e) => println!("✅ Tool completed: {}", e.tool_name),
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+// Add to agent
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_event_broadcaster(Arc::new(ConsoleLogger))
+    .build()?;
+```
+
+### Event Types
+
+The system emits 10+ event types covering the full agent lifecycle:
+
+- `AgentStarted` / `AgentCompleted` - Agent execution lifecycle
+- `ToolStarted` / `ToolCompleted` / `ToolFailed` - Tool execution tracking
+- `SubAgentStarted` / `SubAgentCompleted` - Sub-agent delegation
+- `TodosUpdated` - Todo list changes
+- `StateCheckpointed` - State persistence events
+- `PlanningComplete` - Planner decisions
+
+### Multi-Channel Broadcasting
+
+Broadcast to multiple channels simultaneously:
+
+```rust
+let mut dispatcher = EventDispatcher::new();
+dispatcher.add_broadcaster(Arc::new(ConsoleLogger));
+dispatcher.add_broadcaster(Arc::new(WhatsAppBroadcaster::new(phone)));
+dispatcher.add_broadcaster(Arc::new(SseBroadcaster::new(sse_sender, thread_id)));
+
+let agent = ConfigurableAgentBuilder::new("instructions")
+    .with_event_dispatcher(Arc::new(dispatcher))
+    .build()?;
+```
+
+### Documentation
+
+- **[Event System Guide](docs/EVENT_SYSTEM.md)** - Complete documentation with examples
+- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Migrating from agent_progress_subscriber
+- **[Event System Demo](examples/event-system-demo/)** - Working example
+
 ## Features
 
 ### ✅ Core Features (Python Parity Achieved)

@@ -22,6 +22,7 @@ members = [
     "examples/hitl-demo",
     "examples/hitl-financial-advisor",
     "examples/react-loop-demo",
+    "examples/event-system-demo",
 ]
 resolver = "2"
 

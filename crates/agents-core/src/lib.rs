@@ -4,6 +4,7 @@
 
 pub mod agent;
 pub mod command;
+pub mod events;
 pub mod hitl;
 pub mod llm;
 pub mod messaging;
@@ -14,6 +15,11 @@ pub mod tools;
 
 pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle};
 pub use command::{Command, StateDiff};
+pub use events::{
+    AgentCompletedEvent, AgentEvent, AgentStartedEvent, EventBroadcaster, EventDispatcher,
+    EventMetadata, PlanningCompleteEvent, StateCheckpointedEvent, SubAgentCompletedEvent,
+    SubAgentStartedEvent, TodosUpdatedEvent, ToolCompletedEvent, ToolFailedEvent, ToolStartedEvent,
+};
 pub use hitl::{AgentInterrupt, HitlAction, HitlInterrupt};
 pub use messaging::{
     AgentMessage, CacheControl, MessageContent, MessageMetadata, MessageRole, ToolInvocation,
