@@ -292,8 +292,9 @@ impl DeepAgent {
 
     /// Add a broadcaster dynamically to the agent's event dispatcher.
     ///
-    /// This allows adding broadcasters after the agent is built, which is useful
-    /// for per-conversation or per-customer broadcasters.
+    /// Add a single broadcaster dynamically after the agent is built.
+    ///
+    /// This is useful for per-conversation or per-customer broadcasters.
     ///
     /// # Example
     /// ```no_run
@@ -306,6 +307,34 @@ impl DeepAgent {
             tracing::debug!("Broadcaster added to event dispatcher");
         } else {
             tracing::warn!("add_broadcaster called but no event dispatcher configured");
+        }
+    }
+
+    /// Add multiple broadcasters at once.
+    ///
+    /// This is useful when you need to add several broadcasters for a conversation
+    /// (e.g., WhatsApp, SSE, DynamoDB).
+    ///
+    /// # Example
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // agent.add_broadcasters(vec![
+    /// //     Arc::new(WhatsAppBroadcaster::new(phone)),
+    /// //     Arc::new(SseBroadcaster::new(channel)),
+    /// //     Arc::new(DynamoDbBroadcaster::new(table)),
+    /// // ]);
+    /// ```
+    pub fn add_broadcasters(
+        &self,
+        broadcasters: Vec<Arc<dyn agents_core::events::EventBroadcaster>>,
+    ) {
+        if let Some(dispatcher) = &self.event_dispatcher {
+            for broadcaster in broadcasters {
+                dispatcher.add_broadcaster(broadcaster);
+            }
+            tracing::debug!("Multiple broadcasters added to event dispatcher");
+        } else {
+            tracing::warn!("add_broadcasters called but no event dispatcher configured");
         }
     }
 
