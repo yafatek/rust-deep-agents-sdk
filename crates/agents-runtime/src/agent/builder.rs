@@ -33,6 +33,7 @@ pub struct ConfigurableAgentBuilder {
     enable_prompt_caching: bool,
     checkpointer: Option<Arc<dyn Checkpointer>>,
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    enable_pii_sanitization: bool,
 }
 
 impl ConfigurableAgentBuilder {
@@ -49,6 +50,7 @@ impl ConfigurableAgentBuilder {
             enable_prompt_caching: false,
             checkpointer: None,
             event_dispatcher: None,
+            enable_pii_sanitization: true, // Enabled by default for security
         }
     }
 
@@ -223,6 +225,36 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    /// Enable or disable PII sanitization in event data.
+    ///
+    /// **Enabled by default for security.**
+    ///
+    /// When enabled (default):
+    /// - Message previews are truncated to 100 characters
+    /// - Sensitive fields (passwords, tokens, api_keys, etc.) are redacted
+    /// - PII patterns (emails, phones, credit cards) are removed
+    ///
+    /// Disable only if you need raw data and have other security measures in place.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Keep default (enabled)
+    /// let agent = DeepAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .build()?;
+    ///
+    /// // Explicitly disable (not recommended for production)
+    /// let agent = DeepAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .with_pii_sanitization(false)
+    ///     .build()?;
+    /// ```
+    pub fn with_pii_sanitization(mut self, enabled: bool) -> Self {
+        self.enable_pii_sanitization = enabled;
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<DeepAgent> {
         self.finalize(create_deep_agent_from_config)
     }
@@ -246,6 +278,7 @@ impl ConfigurableAgentBuilder {
             enable_prompt_caching,
             checkpointer,
             event_dispatcher,
+            enable_pii_sanitization,
         } = self;
 
         let planner = planner
@@ -253,7 +286,8 @@ impl ConfigurableAgentBuilder {
 
         let mut cfg = DeepAgentConfig::new(instructions, planner)
             .with_auto_general_purpose(auto_general_purpose)
-            .with_prompt_caching(enable_prompt_caching);
+            .with_prompt_caching(enable_prompt_caching)
+            .with_pii_sanitization(enable_pii_sanitization);
 
         if let Some(ckpt) = checkpointer {
             cfg = cfg.with_checkpointer(ckpt);

@@ -149,7 +149,7 @@ pub use agents_core::llm::{ChunkStream, StreamChunk};
 pub use agents_core::tools::{
     Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
 };
-pub use agents_core::{agent, hitl, llm, messaging, persistence, state, tools};
+pub use agents_core::{agent, events, hitl, llm, messaging, persistence, security, state, tools};
 pub use agents_runtime::{
     create_async_deep_agent,
     create_deep_agent,

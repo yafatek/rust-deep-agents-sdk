@@ -52,6 +52,7 @@ pub struct DeepAgentConfig {
     pub enable_prompt_caching: bool,
     pub checkpointer: Option<Arc<dyn Checkpointer>>,
     pub event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    pub enable_pii_sanitization: bool,
 }
 
 impl DeepAgentConfig {
@@ -68,6 +69,7 @@ impl DeepAgentConfig {
             enable_prompt_caching: false,
             checkpointer: None,
             event_dispatcher: None,
+            enable_pii_sanitization: true, // Enabled by default for security
         }
     }
 
@@ -154,6 +156,19 @@ impl DeepAgentConfig {
         dispatcher: Arc<agents_core::events::EventDispatcher>,
     ) -> Self {
         self.event_dispatcher = Some(dispatcher);
+        self
+    }
+
+    /// Enable or disable PII sanitization in event data.
+    /// Enabled by default for security. Disable only if you need raw data
+    /// and have other security measures in place.
+    ///
+    /// When enabled:
+    /// - Message previews are truncated to 100 characters
+    /// - Sensitive fields (passwords, tokens, etc.) are redacted
+    /// - PII patterns (emails, phones, credit cards) are removed
+    pub fn with_pii_sanitization(mut self, enabled: bool) -> Self {
+        self.enable_pii_sanitization = enabled;
         self
     }
 }
