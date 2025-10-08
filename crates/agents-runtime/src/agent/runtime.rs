@@ -290,6 +290,25 @@ impl DeepAgent {
             .and_then(|guard| guard.pending_interrupts.first().cloned())
     }
 
+    /// Add a broadcaster dynamically to the agent's event dispatcher.
+    ///
+    /// This allows adding broadcasters after the agent is built, which is useful
+    /// for per-conversation or per-customer broadcasters.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // agent.add_broadcaster(Arc::new(MyBroadcaster::new()));
+    /// ```
+    pub fn add_broadcaster(&self, broadcaster: Arc<dyn agents_core::events::EventBroadcaster>) {
+        if let Some(dispatcher) = &self.event_dispatcher {
+            dispatcher.add_broadcaster(broadcaster);
+            tracing::debug!("Broadcaster added to event dispatcher");
+        } else {
+            tracing::warn!("add_broadcaster called but no event dispatcher configured");
+        }
+    }
+
     /// Resume execution after human approval of an interrupt.
     pub async fn resume_with_approval(&self, action: HitlAction) -> anyhow::Result<AgentMessage> {
         // Get the first pending interrupt

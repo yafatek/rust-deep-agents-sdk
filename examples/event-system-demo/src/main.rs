@@ -261,8 +261,7 @@ async fn main() -> anyhow::Result<()> {
     .with_openai_chat(OpenAiConfig::new(api_key, "gpt-4o-mini"))?
     .with_tool(AddTool::as_tool())
     .with_subagent_config(math_subagent)
-    .with_event_broadcaster(console_broadcaster)
-    .with_event_broadcaster(whatsapp_broadcaster)
+    .with_event_broadcasters(vec![console_broadcaster, whatsapp_broadcaster])
     .with_checkpointer(checkpointer)
     .build()?;
 
