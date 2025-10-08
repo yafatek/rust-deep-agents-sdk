@@ -10,7 +10,9 @@
 use agents_macros::tool;
 use agents_sdk::{
     events::{AgentEvent, EventBroadcaster},
-    security::{redact_pii, safe_preview, sanitize_json, sanitize_tool_payload, MAX_PREVIEW_LENGTH},
+    security::{
+        redact_pii, safe_preview, sanitize_json, sanitize_tool_payload, MAX_PREVIEW_LENGTH,
+    },
     state::AgentStateSnapshot,
     ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig,
 };
@@ -79,13 +81,9 @@ impl EventBroadcaster for ConsoleEventLogger {
     }
 
     async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
-
         match event {
             AgentEvent::AgentStarted(e) => {
-                println!(
-                    "\n[{}] 🚀 Agent Started: {}",
-                    self.label, e.agent_name
-                );
+                println!("\n[{}] 🚀 Agent Started: {}", self.label, e.agent_name);
                 println!("   Message Preview: {}", e.message_preview);
             }
             AgentEvent::ToolStarted(e) => {
@@ -100,10 +98,7 @@ impl EventBroadcaster for ConsoleEventLogger {
                 println!("   Result Summary: {}", e.result_summary);
             }
             AgentEvent::SubAgentStarted(e) => {
-                println!(
-                    "\n[{}] 🤖 Sub-Agent Started: {}",
-                    self.label, e.agent_name
-                );
+                println!("\n[{}] 🤖 Sub-Agent Started: {}", self.label, e.agent_name);
                 println!("   Instruction Summary: {}", e.instruction_summary);
             }
             AgentEvent::SubAgentCompleted(e) => {
@@ -114,10 +109,7 @@ impl EventBroadcaster for ConsoleEventLogger {
                 println!("   Result Summary: {}", e.result_summary);
             }
             AgentEvent::PlanningComplete(e) => {
-                println!(
-                    "\n[{}] 🧠 Planning Complete: {}",
-                    self.label, e.action_type
-                );
+                println!("\n[{}] 🧠 Planning Complete: {}", self.label, e.action_type);
                 println!("   Action Summary: {}", e.action_summary);
             }
             _ => {}
@@ -138,8 +130,7 @@ async fn demo_with_sanitization() -> anyhow::Result<()> {
 
     // Configure OpenAI
     let config = OpenAiConfig::new(
-        std::env::var("OPENAI_API_KEY")
-            .unwrap_or_else(|_| "test-key".to_string()),
+        std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "test-key".to_string()),
         "gpt-4o-mini",
     );
 
@@ -191,8 +182,7 @@ async fn demo_without_sanitization() -> anyhow::Result<()> {
 
     // Configure OpenAI
     let config = OpenAiConfig::new(
-        std::env::var("OPENAI_API_KEY")
-            .unwrap_or_else(|_| "test-key".to_string()),
+        std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "test-key".to_string()),
         "gpt-4o-mini",
     );
 
