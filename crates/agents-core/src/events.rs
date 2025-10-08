@@ -163,22 +163,35 @@ pub trait EventBroadcaster: Send + Sync {
 }
 
 pub struct EventDispatcher {
-    broadcasters: Vec<Arc<dyn EventBroadcaster>>,
+    broadcasters: std::sync::RwLock<Vec<Arc<dyn EventBroadcaster>>>,
 }
 
 impl EventDispatcher {
     pub fn new() -> Self {
         Self {
-            broadcasters: Vec::new(),
+            broadcasters: std::sync::RwLock::new(Vec::new()),
         }
     }
 
-    pub fn add_broadcaster(&mut self, broadcaster: Arc<dyn EventBroadcaster>) {
-        self.broadcasters.push(broadcaster);
+    /// Add a broadcaster (supports dynamic addition with interior mutability)
+    pub fn add_broadcaster(&self, broadcaster: Arc<dyn EventBroadcaster>) {
+        if let Ok(mut broadcasters) = self.broadcasters.write() {
+            broadcasters.push(broadcaster);
+        } else {
+            tracing::error!("Failed to acquire write lock on broadcasters");
+        }
     }
 
     pub async fn dispatch(&self, event: AgentEvent) {
-        let broadcasters = self.broadcasters.clone();
+        let broadcasters = {
+            if let Ok(guard) = self.broadcasters.read() {
+                guard.clone()
+            } else {
+                tracing::error!("Failed to acquire read lock on broadcasters");
+                return;
+            }
+        };
+
         for broadcaster in broadcasters {
             let event_clone = event.clone();
             tokio::spawn(async move {

@@ -162,19 +162,59 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    /// Add a single event broadcaster to the agent
+    ///
+    /// Example:
+    /// ```ignore
+    /// builder.with_event_broadcaster(console_broadcaster)
+    /// ```
     pub fn with_event_broadcaster(
         mut self,
         broadcaster: Arc<dyn agents_core::events::EventBroadcaster>,
     ) -> Self {
+        // Create dispatcher if it doesn't exist
         if self.event_dispatcher.is_none() {
             self.event_dispatcher = Some(Arc::new(agents_core::events::EventDispatcher::new()));
         }
-        if let Some(dispatcher) = Arc::get_mut(self.event_dispatcher.as_mut().unwrap()) {
+
+        // Add broadcaster to the dispatcher (uses interior mutability)
+        if let Some(dispatcher) = &self.event_dispatcher {
             dispatcher.add_broadcaster(broadcaster);
         }
+
         self
     }
 
+    /// Add multiple event broadcasters at once (cleaner API)
+    ///
+    /// Example:
+    /// ```ignore
+    /// builder.with_event_broadcasters(vec![
+    ///     console_broadcaster,
+    ///     whatsapp_broadcaster,
+    ///     dynamodb_broadcaster,
+    /// ])
+    /// ```
+    pub fn with_event_broadcasters(
+        mut self,
+        broadcasters: Vec<Arc<dyn agents_core::events::EventBroadcaster>>,
+    ) -> Self {
+        // Create dispatcher if it doesn't exist
+        if self.event_dispatcher.is_none() {
+            self.event_dispatcher = Some(Arc::new(agents_core::events::EventDispatcher::new()));
+        }
+
+        // Add all broadcasters
+        if let Some(dispatcher) = &self.event_dispatcher {
+            for broadcaster in broadcasters {
+                dispatcher.add_broadcaster(broadcaster);
+            }
+        }
+
+        self
+    }
+
+    /// Set the event dispatcher directly (replaces any existing dispatcher)
     pub fn with_event_dispatcher(
         mut self,
         dispatcher: Arc<agents_core::events::EventDispatcher>,
