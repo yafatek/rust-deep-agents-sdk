@@ -10,6 +10,7 @@ pub mod llm;
 pub mod messaging;
 pub mod persistence;
 pub mod prompts;
+pub mod security;
 pub mod state;
 pub mod tools;
 

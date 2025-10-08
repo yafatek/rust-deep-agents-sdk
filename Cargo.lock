@@ -19,7 +19,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agents-aws"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -36,12 +36,14 @@ dependencies = [
 
 [[package]]
 name = "agents-core"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
  "futures",
+ "lazy_static",
+ "regex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -66,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "agents-persistence"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -81,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "agents-runtime"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "agents-core",
  "agents-toolkit",
@@ -101,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "agents-sdk"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "agents-aws",
  "agents-core",
@@ -116,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "agents-toolkit"
-version = "0.0.18"
+version = "0.0.20"
 dependencies = [
  "agents-core",
  "agents-macros",
@@ -2330,6 +2332,23 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "pii-sanitization-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-core",
+ "agents-macros",
+ "agents-sdk",
+ "anyhow",
+ "async-trait",
+ "dotenvy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "pin-project-lite"

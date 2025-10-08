@@ -452,6 +452,149 @@ cargo run --example deep-research-agent
 cargo run --example checkpointer-demo
 ```
 
+## Security & PII Protection
+
+The SDK includes built-in security features to prevent PII (Personally Identifiable Information) leakage in event data and logs.
+
+### Automatic PII Sanitization
+
+**Enabled by default** - All event data is automatically sanitized to protect sensitive information:
+
+```rust
+use agents_sdk::ConfigurableAgentBuilder;
+
+// PII sanitization is enabled by default
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .build()?;
+
+// Events will automatically have:
+// - Message previews truncated to 100 characters
+// - Sensitive fields (passwords, tokens, etc.) redacted
+// - PII patterns (emails, phones, credit cards) removed
+```
+
+### Disabling PII Sanitization
+
+Only disable if you need raw data and have other security measures in place:
+
+```rust
+// Explicitly disable (not recommended for production)
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_pii_sanitization(false)  // Disable sanitization
+    .build()?;
+```
+
+### What Gets Sanitized
+
+**Sensitive Field Detection** (case-insensitive):
+- `password`, `passwd`, `pwd`
+- `secret`, `token`, `api_key`, `apikey`
+- `access_token`, `refresh_token`, `auth_token`
+- `authorization`, `bearer`
+- `credit_card`, `card_number`, `cvv`
+- `ssn`, `social_security`
+- `private_key`, `privatekey`, `encryption_key`
+
+**PII Pattern Detection**:
+- **Emails**: `john@example.com` → `[EMAIL]`
+- **Phone Numbers**: `555-123-4567` → `[PHONE]`
+- **Credit Cards**: `4532-1234-5678-9010` → `[CARD]`
+
+**Message Truncation**:
+- All message previews limited to 100 characters
+- Tool payloads truncated to prevent excessive data exposure
+
+### Manual Sanitization
+
+Use the security utilities directly in your custom code:
+
+```rust
+use agents_core::security::{
+    safe_preview,
+    sanitize_tool_payload,
+    sanitize_json,
+    redact_pii,
+    MAX_PREVIEW_LENGTH,
+};
+use serde_json::json;
+
+// Sanitize text with PII redaction
+let text = "Contact me at john@example.com or call 555-123-4567";
+let safe_text = safe_preview(text, MAX_PREVIEW_LENGTH);
+// Output: "Contact me at [EMAIL] or call [PHONE]"
+
+// Sanitize JSON objects
+let payload = json!({
+    "username": "john",
+    "password": "secret123",
+    "api_key": "sk-1234567890"
+});
+let clean = sanitize_json(&payload);
+// Output: {"username": "john", "password": "[REDACTED]", "api_key": "[REDACTED]"}
+
+// Sanitize tool payloads (combines JSON sanitization + PII redaction + truncation)
+let sanitized = sanitize_tool_payload(&payload, MAX_PREVIEW_LENGTH);
+
+// Redact PII patterns only
+let text = "My email is john@example.com";
+let redacted = redact_pii(text);
+// Output: "My email is [EMAIL]"
+```
+
+### Security Best Practices
+
+1. **Keep PII sanitization enabled** - It's on by default for a reason
+2. **Review event broadcasters** - Ensure they don't log raw data
+3. **Use HTTPS/TLS** - Encrypt data in transit
+4. **Audit logs** - Monitor for potential PII leaks
+5. **Test sanitization** - Verify PII is properly redacted in your use case
+6. **Limit data retention** - Don't store event data longer than necessary
+7. **Access control** - Restrict who can view event data
+
+### Example: Secure Event Broadcasting
+
+```rust
+use agents_core::events::{AgentEvent, EventBroadcaster};
+use agents_core::security::{safe_preview, MAX_PREVIEW_LENGTH};
+use async_trait::async_trait;
+
+pub struct SecureLogBroadcaster;
+
+#[async_trait]
+impl EventBroadcaster for SecureLogBroadcaster {
+    fn id(&self) -> &str {
+        "secure_log"
+    }
+    
+    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
+        match event {
+            AgentEvent::ToolStarted(e) => {
+                // Input is already sanitized by runtime when PII sanitization is enabled
+                tracing::info!(
+                    tool_name = %e.tool_name,
+                    input = %e.input_summary,  // Already safe!
+                    "Tool started"
+                );
+            }
+            AgentEvent::AgentStarted(e) => {
+                // Message preview is already sanitized
+                tracing::info!(
+                    agent = %e.agent_name,
+                    message = %e.message_preview,  // Already safe!
+                    "Agent started"
+                );
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+```
+
+**See Documentation**: [Event System Security](docs/EVENT_SYSTEM.md#security-considerations) for complete security guidelines.
+
 ## Event System
 
 The SDK includes a powerful event broadcasting system for real-time progress tracking and multi-channel notifications.
@@ -564,6 +707,14 @@ let agent = ConfigurableAgentBuilder::new("instructions")
 - **Todo Management**: `write_todos` with detailed usage examples
 - **File Operations**: Full CRUD operations on mock filesystem
 - **Task Delegation**: `task` tool for spawning ephemeral sub-agents
+
+**Security Features**
+- **PII Sanitization**: Automatic redaction of sensitive data in events (enabled by default)
+  - Sensitive field detection (passwords, tokens, API keys, etc.)
+  - PII pattern matching (emails, phones, credit cards)
+  - Message truncation to prevent data leakage
+  - Configurable via `.with_pii_sanitization(bool)`
+- **Manual Security Utilities**: `safe_preview()`, `sanitize_json()`, `redact_pii()`, `sanitize_tool_payload()`
 
 ### 🚧 Future Features (Planned)
 

@@ -548,14 +548,142 @@ async fn test_events_emitted() {
 
 ### PII Protection
 
-Always truncate sensitive data in events:
+The SDK includes built-in security utilities to prevent PII leakage in events:
 
 ```rust
-fn truncate_message(msg: &str) -> String {
-    if msg.len() > 100 {
-        format!("{}...", &msg[..100])
-    } else {
-        msg.to_string()
+use agents_core::security::{
+    safe_preview,
+    sanitize_tool_payload,
+    sanitize_json,
+    redact_pii,
+    MAX_PREVIEW_LENGTH,
+};
+
+// Truncate and redact PII from text
+let preview = safe_preview(user_message, MAX_PREVIEW_LENGTH);
+// Output: "Contact me at [EMAIL] or call [PHONE]..."
+
+// Sanitize tool payloads
+let sanitized = sanitize_tool_payload(&payload, MAX_PREVIEW_LENGTH);
+// Redacts: password, api_key, token, credit_card, etc.
+// Redacts PII: emails, phone numbers, credit cards
+// Truncates to 100 characters max
+
+// Sanitize JSON objects
+let clean_json = sanitize_json(&json_value);
+// Replaces sensitive field values with "[REDACTED]"
+```
+
+#### Automatic PII Protection
+
+The runtime automatically applies security measures to all event data:
+
+1. **Message Previews**: Truncated to 100 characters and PII redacted
+2. **Tool Payloads**: Sensitive fields redacted, PII patterns removed
+3. **Error Messages**: Truncated to prevent leaking stack traces
+
+#### Sensitive Field Detection
+
+The following field names are automatically redacted (case-insensitive):
+
+- `password`, `passwd`, `pwd`
+- `secret`, `token`, `api_key`, `apikey`
+- `access_token`, `refresh_token`, `auth_token`
+- `authorization`, `bearer`
+- `credit_card`, `card_number`, `cvv`
+- `ssn`, `social_security`
+- `private_key`, `privatekey`, `encryption_key`
+
+#### PII Pattern Detection
+
+The following patterns are automatically redacted:
+
+- **Emails**: `john@example.com` → `[EMAIL]`
+- **Phone Numbers**: `555-123-4567` → `[PHONE]`
+- **Credit Cards**: `4532-1234-5678-9010` → `[CARD]`
+
+#### Example: Secure Event Broadcasting
+
+```rust
+use agents_core::events::{AgentEvent, EventBroadcaster};
+use agents_core::security::{safe_preview, sanitize_tool_payload, MAX_PREVIEW_LENGTH};
+use async_trait::async_trait;
+
+pub struct SecureLogBroadcaster;
+
+#[async_trait]
+impl EventBroadcaster for SecureLogBroadcaster {
+    fn id(&self) -> &str {
+        "secure_log"
+    }
+    
+    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
+        match event {
+            AgentEvent::ToolStarted(e) => {
+                // Tool name is safe, but input might contain PII
+                let safe_input = safe_preview(&e.input_summary, MAX_PREVIEW_LENGTH);
+                tracing::info!(
+                    tool_name = %e.tool_name,
+                    input = %safe_input,
+                    "Tool started"
+                );
+            }
+            AgentEvent::AgentStarted(e) => {
+                // Message preview is already sanitized by runtime
+                tracing::info!(
+                    agent = %e.agent_name,
+                    message = %e.message_preview,
+                    "Agent started"
+                );
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+```
+
+#### Testing PII Protection
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agents_core::security::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_pii_redaction() {
+        let text = "Email: john@example.com, Phone: 555-123-4567";
+        let redacted = redact_pii(text);
+        
+        assert!(redacted.contains("[EMAIL]"));
+        assert!(redacted.contains("[PHONE]"));
+        assert!(!redacted.contains("john@example.com"));
+    }
+
+    #[test]
+    fn test_sensitive_field_redaction() {
+        let payload = json!({
+            "username": "john",
+            "password": "secret123",
+            "api_key": "sk-1234567890"
+        });
+        
+        let sanitized = sanitize_json(&payload);
+        
+        assert_eq!(sanitized["username"], "john");
+        assert_eq!(sanitized["password"], "[REDACTED]");
+        assert_eq!(sanitized["api_key"], "[REDACTED]");
+    }
+
+    #[test]
+    fn test_truncation() {
+        let long_text = "a".repeat(200);
+        let preview = safe_preview(&long_text, MAX_PREVIEW_LENGTH);
+        
+        assert!(preview.len() <= MAX_PREVIEW_LENGTH + 3); // +3 for "..."
+        assert!(preview.ends_with("..."));
     }
 }
 ```
@@ -565,6 +693,7 @@ fn truncate_message(msg: &str) -> String {
 - Verify thread_id ownership before SSE subscriptions
 - Scope DynamoDB items to customer_id
 - Validate phone numbers before WhatsApp broadcasts
+- Never log raw credentials or tokens in events
 
 ## Monitoring
 

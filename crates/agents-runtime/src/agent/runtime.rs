@@ -63,6 +63,7 @@ pub struct DeepAgent {
     builtin_tools: Option<HashSet<String>>,
     checkpointer: Option<Arc<dyn Checkpointer>>,
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
+    enable_pii_sanitization: bool,
 }
 
 impl DeepAgent {
@@ -126,19 +127,28 @@ impl DeepAgent {
             MessageContent::Text(t) => t.clone(),
             MessageContent::Json(v) => v.to_string(),
         };
-        if text.len() > 100 {
-            format!("{}...", &text[..100])
+
+        if self.enable_pii_sanitization {
+            agents_core::security::safe_preview(&text, agents_core::security::MAX_PREVIEW_LENGTH)
         } else {
-            text
+            // No sanitization - just truncate
+            agents_core::security::truncate_string(&text, agents_core::security::MAX_PREVIEW_LENGTH)
         }
     }
 
     fn summarize_payload(&self, payload: &Value) -> String {
-        let json_str = payload.to_string();
-        if json_str.len() > 100 {
-            format!("{}...", &json_str[..100])
+        if self.enable_pii_sanitization {
+            agents_core::security::sanitize_tool_payload(
+                payload,
+                agents_core::security::MAX_PREVIEW_LENGTH,
+            )
         } else {
-            json_str
+            // No sanitization - just truncate JSON string
+            let json_str = payload.to_string();
+            agents_core::security::truncate_string(
+                &json_str,
+                agents_core::security::MAX_PREVIEW_LENGTH,
+            )
         }
     }
 
@@ -872,6 +882,9 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         // Configure prompt caching
         sub_cfg = sub_cfg.with_prompt_caching(subagent_config.enable_prompt_caching);
 
+        // Inherit PII sanitization setting from parent
+        sub_cfg = sub_cfg.with_pii_sanitization(config.enable_pii_sanitization);
+
         // Build the sub-agent recursively
         let sub_agent = create_deep_agent_from_config(sub_cfg);
 
@@ -895,7 +908,8 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
             let mut sub_cfg =
                 DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
                     .with_auto_general_purpose(false)
-                    .with_prompt_caching(config.enable_prompt_caching);
+                    .with_prompt_caching(config.enable_prompt_caching)
+                    .with_pii_sanitization(config.enable_pii_sanitization);
             if let Some(ref selected) = config.builtin_tools {
                 sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }
@@ -983,5 +997,6 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         builtin_tools: config.builtin_tools,
         checkpointer: config.checkpointer,
         event_dispatcher: config.event_dispatcher,
+        enable_pii_sanitization: config.enable_pii_sanitization,
     }
 }

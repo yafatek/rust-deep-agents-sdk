@@ -1,6 +1,6 @@
 [package]
 name = "agents-core"
-version = "0.0.19"
+version = "0.0.20"
 edition = "2021"
 description = "Core traits, data models, and prompt primitives for building deep agents."
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -17,6 +17,8 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+lazy_static = "1.4"
+regex = "1.10"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
