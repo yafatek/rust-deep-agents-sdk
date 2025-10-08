@@ -441,7 +441,7 @@ fn should_broadcast(&self, event: &AgentEvent) -> bool {
 ## Deprecation Timeline
 
 - **v0.0.16**: Event system introduced, `agent_progress_subscriber` marked deprecated
-- **v0.0.17**: Deprecation warnings added
+- **v0.0.18**: Deprecation warnings added
 - **v0.0.18**: `agent_progress_subscriber` removed
 
 ## Getting Help
