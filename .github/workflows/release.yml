@@ -80,48 +80,13 @@ jobs:
         sed -i 's/, version = "0.1.0"/, version = "${{ steps.version.outputs.VERSION }}"/' crates/*/Cargo.toml
     - name: Publish crates in dependency order
       run: |
-        # Function to wait for crate availability on crates.io (intelligent polling)
-        wait_for_crate() {
-          local crate=$1
-          local version=$2
-          local max_attempts=20
-          local attempt=0
-          
-          echo "Waiting for $crate@$version to be available..."
-          while [ $attempt -lt $max_attempts ]; do
-            if cargo search "$crate" --limit 1 | grep -q "^$crate ="; then
-              echo "✅ $crate is available"
-              return 0
-            fi
-            echo "⏳ Attempt $((attempt + 1))/$max_attempts - waiting 3s..."
-            sleep 3
-            attempt=$((attempt + 1))
-          done
-          echo "⚠️  Timeout waiting for $crate, proceeding anyway..."
-          return 0
-        }
-        
-        VERSION="${{ steps.version.outputs.VERSION }}"
-        
-        # Publish in dependency order with intelligent waits
+        # Publish in dependency order - crates.io will handle propagation
         cargo publish -p agents-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-macros" "$VERSION"
-        
         cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-core" "$VERSION"
-        
         cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-toolkit" "$VERSION"
-        
         cargo publish -p agents-persistence --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-persistence" "$VERSION"
-        
         cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-runtime" "$VERSION"
-        
         cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-        wait_for_crate "agents-aws" "$VERSION"
-        
         cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
         
         echo "✅ All crates published successfully!"
