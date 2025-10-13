@@ -84,7 +84,8 @@ pub struct AgentCompletedEvent {
     pub metadata: EventMetadata,
     pub agent_name: String,
     pub duration_ms: u64,
-    pub response_preview: String,
+    pub response_preview: String, // Truncated for logs (~100 chars)
+    pub response: String,         // Full response text
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
