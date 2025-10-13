@@ -136,6 +136,13 @@ impl DeepAgent {
         }
     }
 
+    fn get_full_message_text(&self, message: &AgentMessage) -> String {
+        match &message.content {
+            MessageContent::Text(t) => t.clone(),
+            MessageContent::Json(v) => v.to_string(),
+        }
+    }
+
     fn summarize_payload(&self, payload: &Value) -> String {
         if self.enable_pii_sanitization {
             agents_core::security::sanitize_tool_payload(
@@ -567,6 +574,7 @@ impl DeepAgent {
                             agent_name: self.descriptor.name.clone(),
                             duration_ms: start_time.elapsed().as_millis() as u64,
                             response_preview: self.truncate_message(&message),
+                            response: self.get_full_message_text(&message),
                         },
                     ));
 
