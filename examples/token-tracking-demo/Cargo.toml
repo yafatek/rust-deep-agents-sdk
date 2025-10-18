@@ -1,0 +1,10 @@
+[package]
+name = "token-tracking-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agents-sdk = { path = "../../crates/agents-sdk", features = ["redis"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing-subscriber = "0.3"
+anyhow = "1.0"

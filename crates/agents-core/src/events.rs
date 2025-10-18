@@ -18,6 +18,7 @@ pub enum AgentEvent {
     TodosUpdated(TodosUpdatedEvent),
     StateCheckpointed(StateCheckpointedEvent),
     PlanningComplete(PlanningCompleteEvent),
+    TokenUsage(TokenUsageEvent),
 }
 
 impl AgentEvent {
@@ -33,6 +34,7 @@ impl AgentEvent {
             AgentEvent::TodosUpdated(_) => "todos_updated",
             AgentEvent::StateCheckpointed(_) => "state_checkpointed",
             AgentEvent::PlanningComplete(_) => "planning_complete",
+            AgentEvent::TokenUsage(_) => "token_usage",
         }
     }
 
@@ -48,6 +50,7 @@ impl AgentEvent {
             AgentEvent::TodosUpdated(e) => &e.metadata,
             AgentEvent::StateCheckpointed(e) => &e.metadata,
             AgentEvent::PlanningComplete(e) => &e.metadata,
+            AgentEvent::TokenUsage(e) => &e.metadata,
         }
     }
 }
@@ -152,6 +155,58 @@ pub struct PlanningCompleteEvent {
     pub metadata: EventMetadata,
     pub action_type: String,
     pub action_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenUsageEvent {
+    pub metadata: EventMetadata,
+    pub usage: TokenUsage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenUsage {
+    /// Number of input tokens
+    pub input_tokens: u32,
+    /// Number of output tokens
+    pub output_tokens: u32,
+    /// Total tokens used
+    pub total_tokens: u32,
+    /// Estimated cost in USD
+    pub estimated_cost: f64,
+    /// Provider name
+    pub provider: String,
+    /// Model name
+    pub model: String,
+    /// Request duration in milliseconds
+    pub duration_ms: u64,
+    /// Timestamp of the request
+    pub timestamp: String,
+}
+
+impl TokenUsage {
+    pub fn new(
+        input_tokens: u32,
+        output_tokens: u32,
+        provider: impl Into<String>,
+        model: impl Into<String>,
+        duration_ms: u64,
+        estimated_cost: f64,
+    ) -> Self {
+        let provider = provider.into();
+        let model = model.into();
+        let total_tokens = input_tokens + output_tokens;
+
+        Self {
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            estimated_cost,
+            provider,
+            model,
+            duration_ms,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
 }
 
 #[async_trait]

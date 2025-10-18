@@ -859,7 +859,18 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     let mut registrations: Vec<SubAgentRegistration> = Vec::new();
 
     // Build custom sub-agents from configs
+    tracing::info!(
+        "📋 Processing {} sub-agent configurations",
+        config.subagent_configs.len()
+    );
+
     for subagent_config in &config.subagent_configs {
+        tracing::info!(
+            "🏗️ Building sub-agent: {} ({})",
+            subagent_config.name,
+            subagent_config.description
+        );
+
         // Determine the planner for this sub-agent
         let sub_planner = if let Some(ref model) = subagent_config.model {
             // Sub-agent has its own model - wrap it in a planner
@@ -874,6 +885,11 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
 
         // Configure tools
         if let Some(ref tools) = subagent_config.tools {
+            tracing::debug!(
+                "  - Configuring {} tools for {}",
+                tools.len(),
+                subagent_config.name
+            );
             for tool in tools {
                 sub_cfg = sub_cfg.with_tool(tool.clone());
             }
@@ -904,7 +920,11 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
             },
             agent: Arc::new(sub_agent),
         });
+
+        tracing::info!("=> Registered sub-agent: {}", subagent_config.name);
     }
+
+    tracing::info!("=> Total sub-agents registered: {}", registrations.len());
 
     // Optionally inject a general-purpose subagent
     if config.auto_general_purpose {

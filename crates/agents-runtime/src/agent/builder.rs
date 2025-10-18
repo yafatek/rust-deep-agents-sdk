@@ -6,7 +6,10 @@
 use super::api::{create_async_deep_agent_from_config, create_deep_agent_from_config};
 use super::config::{DeepAgentConfig, SubAgentConfig, SummarizationConfig};
 use super::runtime::DeepAgent;
-use crate::middleware::HitlPolicy;
+use crate::middleware::{
+    token_tracking::{TokenTrackingConfig, TokenTrackingMiddleware},
+    HitlPolicy,
+};
 use crate::planner::LlmBackedPlanner;
 use crate::providers::{
     AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
@@ -34,6 +37,7 @@ pub struct ConfigurableAgentBuilder {
     checkpointer: Option<Arc<dyn Checkpointer>>,
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     enable_pii_sanitization: bool,
+    token_tracking_config: Option<TokenTrackingConfig>,
 }
 
 impl ConfigurableAgentBuilder {
@@ -51,6 +55,7 @@ impl ConfigurableAgentBuilder {
             checkpointer: None,
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
+            token_tracking_config: None,
         }
     }
 
@@ -255,6 +260,66 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    /// Enable token tracking for monitoring LLM usage and costs.
+    ///
+    /// This enables tracking of token usage, costs, and performance metrics
+    /// across all LLM requests made by the agent.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Enable token tracking with default settings
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .with_token_tracking(true)
+    ///     .build()?;
+    ///
+    /// // Enable with custom configuration
+    /// let config = TokenTrackingConfig {
+    ///     enabled: true,
+    ///     emit_events: true,
+    ///     log_usage: true,
+    ///     custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
+    /// };
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .with_token_tracking_config(config)
+    ///     .build()?;
+    /// ```
+    pub fn with_token_tracking(mut self, enabled: bool) -> Self {
+        self.token_tracking_config = Some(TokenTrackingConfig {
+            enabled,
+            emit_events: enabled,
+            log_usage: enabled,
+            custom_costs: None,
+        });
+        self
+    }
+
+    /// Configure token tracking with custom settings.
+    ///
+    /// This allows fine-grained control over token tracking behavior,
+    /// including custom cost models and event emission settings.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let config = TokenTrackingConfig {
+    ///     enabled: true,
+    ///     emit_events: true,
+    ///     log_usage: false, // Don't log to console
+    ///     custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
+    /// };
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .with_token_tracking_config(config)
+    ///     .build()?;
+    /// ```
+    pub fn with_token_tracking_config(mut self, config: TokenTrackingConfig) -> Self {
+        self.token_tracking_config = Some(config);
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<DeepAgent> {
         self.finalize(create_deep_agent_from_config)
     }
@@ -279,12 +344,36 @@ impl ConfigurableAgentBuilder {
             checkpointer,
             event_dispatcher,
             enable_pii_sanitization,
+            token_tracking_config,
         } = self;
 
         let planner = planner
             .ok_or_else(|| anyhow::anyhow!("model must be set (use with_model or with_*_chat)"))?;
 
-        let mut cfg = DeepAgentConfig::new(instructions, planner)
+        // Wrap the planner with token tracking if enabled
+        let final_planner = if let Some(token_config) = token_tracking_config {
+            if token_config.enabled {
+                // Extract the underlying model from the planner
+                let planner_any = planner.as_any();
+                if let Some(llm_planner) = planner_any.downcast_ref::<LlmBackedPlanner>() {
+                    let model = llm_planner.model().clone();
+                    let tracked_model = Arc::new(TokenTrackingMiddleware::new(
+                        token_config,
+                        model,
+                        event_dispatcher.clone(),
+                    ));
+                    Arc::new(LlmBackedPlanner::new(tracked_model)) as Arc<dyn PlannerHandle>
+                } else {
+                    planner
+                }
+            } else {
+                planner
+            }
+        } else {
+            planner
+        };
+
+        let mut cfg = DeepAgentConfig::new(instructions, final_planner)
             .with_auto_general_purpose(auto_general_purpose)
             .with_prompt_caching(enable_prompt_caching)
             .with_pii_sanitization(enable_pii_sanitization);
