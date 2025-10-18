@@ -168,6 +168,12 @@ pub use agents_runtime::{
     SummarizationConfig,
 };
 
+// Re-export token tracking functionality
+pub use agents_core::events::TokenUsage;
+pub use agents_runtime::middleware::token_tracking::{
+    TokenCosts, TokenTrackingConfig, TokenTrackingMiddleware, TokenUsageSummary,
+};
+
 // Re-export toolkit functionality (when toolkit feature is enabled)
 #[cfg(feature = "toolkit")]
 #[cfg_attr(docsrs, doc(cfg(feature = "toolkit")))]

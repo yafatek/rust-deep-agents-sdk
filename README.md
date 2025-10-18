@@ -6,6 +6,14 @@
 
 High-performance Rust framework for composing reusable "deep" AI agents with custom tools, sub-agents, and prompts. This repository contains the SDK workspace, AWS integration helpers, documentation, and deployment scaffolding.
 
+## 🆕 What's New in v0.0.22
+
+- **Token Tracking**: Built-in LLM usage monitoring with cost estimation and performance metrics
+- **Enhanced Event System**: New `TokenUsage` events for real-time usage tracking
+- **Cost Management**: Predefined pricing models for OpenAI, Anthropic, and Gemini
+- **Performance Monitoring**: Request duration and throughput tracking
+- **Event Broadcasting**: Token usage events integrate with existing event system
+
 ## Workspace Layout
 - `crates/agents-core` – Domain traits, message structures, prompt packs, and state models.
 - `crates/agents-runtime` – Tokio-powered runtime glue between planners, tools, and state stores.
@@ -23,15 +31,15 @@ Add the unified SDK to your `Cargo.toml`:
 ```toml
 # Simple installation (includes toolkit by default)
 [dependencies]
-agents-sdk = "0.0.1"
+agents-sdk = "0.0.22"
 
 # Or choose specific features:
-# agents-sdk = { version = "0.0.1", default-features = false }  # Core only
-# agents-sdk = { version = "0.0.1", features = ["aws"] }       # With AWS
-# agents-sdk = { version = "0.0.1", features = ["redis"] }     # With Redis persistence
-# agents-sdk = { version = "0.0.1", features = ["postgres"] }  # With PostgreSQL persistence
-# agents-sdk = { version = "0.0.1", features = ["dynamodb"] }  # With DynamoDB persistence
-# agents-sdk = { version = "0.0.1", features = ["full"] }      # Everything
+# agents-sdk = { version = "0.0.22", default-features = false }  # Core only
+# agents-sdk = { version = "0.0.22", features = ["aws"] }       # With AWS
+# agents-sdk = { version = "0.0.22", features = ["redis"] }     # With Redis persistence
+# agents-sdk = { version = "0.0.22", features = ["postgres"] }  # With PostgreSQL persistence
+# agents-sdk = { version = "0.0.22", features = ["dynamodb"] }  # With DynamoDB persistence
+# agents-sdk = { version = "0.0.22", features = ["full"] }      # Everything
 ```
 
 ### Individual Crates (Advanced)
@@ -40,10 +48,10 @@ If you prefer granular control, you can also use individual crates:
 
 ```toml
 [dependencies]
-agents-core = "0.0.1"      # Core traits and types
-agents-runtime = "0.0.1"   # Agent runtime and builders
-agents-toolkit = "0.0.1"   # Built-in tools (optional)
-agents-aws = "0.0.1"       # AWS integrations (optional)
+agents-core = "0.0.22"      # Core traits and types
+agents-runtime = "0.0.22"   # Agent runtime and builders
+agents-toolkit = "0.0.22"   # Built-in tools (optional)
+agents-aws = "0.0.22"       # AWS integrations (optional)
 ```
 
 ## Quick Start
@@ -170,6 +178,74 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 See [`examples/checkpointer-demo`](examples/checkpointer-demo) for a complete working example.
+
+### Token Tracking & Cost Monitoring
+
+Monitor LLM usage, costs, and performance metrics with built-in token tracking:
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, TokenTrackingConfig, TokenCosts};
+
+let config = OpenAiConfig::new(api_key, "gpt-4o-mini");
+
+// Enable token tracking with default settings
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_openai_chat(config)?
+    .with_token_tracking(true)  // Enable with defaults
+    .build()?;
+
+// Or configure with custom settings
+let token_config = TokenTrackingConfig {
+    enabled: true,
+    emit_events: true,
+    log_usage: true,
+    custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
+};
+
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_openai_chat(config)?
+    .with_token_tracking_config(token_config)
+    .build()?;
+```
+
+**Features:**
+- **Real-time tracking**: Monitors all LLM requests automatically
+- **Cost estimation**: Supports OpenAI, Anthropic, and Gemini pricing
+- **Event broadcasting**: Integrates with existing event system
+- **Performance metrics**: Tracks request duration and throughput
+- **Flexible configuration**: Enable/disable features as needed
+
+**Token Usage Events:**
+```rust
+use agents_core::events::{AgentEvent, EventBroadcaster};
+use async_trait::async_trait;
+
+struct TokenUsageBroadcaster;
+
+#[async_trait]
+impl EventBroadcaster for TokenUsageBroadcaster {
+    fn id(&self) -> &str { "token_usage" }
+    
+    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
+        if let AgentEvent::TokenUsage(token_event) = event {
+            let usage = &token_event.usage;
+            println!(
+                "Token Usage: {} input, {} output, ${:.4} cost",
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.estimated_cost
+            );
+        }
+        Ok(())
+    }
+}
+
+// Add broadcaster to agent
+let broadcaster = Arc::new(TokenUsageBroadcaster);
+agent.add_broadcaster(broadcaster);
+```
+
+See [`examples/token-tracking-demo`](examples/token-tracking-demo) for a complete working example and [`docs/TOKEN_TRACKING.md`](docs/TOKEN_TRACKING.md) for detailed documentation.
 
 ### Human-in-the-Loop (HITL) Tool Approval
 
@@ -715,6 +791,14 @@ let agent = ConfigurableAgentBuilder::new("instructions")
   - Message truncation to prevent data leakage
   - Configurable via `.with_pii_sanitization(bool)`
 - **Manual Security Utilities**: `safe_preview()`, `sanitize_json()`, `redact_pii()`, `sanitize_tool_payload()`
+
+**Token Tracking & Cost Management**
+- **Usage Monitoring**: Real-time tracking of input/output tokens for all LLM requests
+- **Cost Estimation**: Built-in pricing models for OpenAI, Anthropic, and Gemini
+- **Performance Metrics**: Request duration and throughput tracking
+- **Event Integration**: Token usage events integrate with existing event broadcasting system
+- **Flexible Configuration**: Enable/disable tracking, logging, and event emission independently
+- **Custom Cost Models**: Support for custom pricing models and provider-specific costs
 
 ### 🚧 Future Features (Planned)
 

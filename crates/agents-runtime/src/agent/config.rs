@@ -3,7 +3,7 @@
 //! This module contains all the configuration structures used to build Deep Agents,
 //! including parameter structs that mirror the Python SDK API.
 
-use crate::middleware::{AgentMiddleware, HitlPolicy};
+use crate::middleware::{token_tracking::TokenTrackingConfig, AgentMiddleware, HitlPolicy};
 use agents_core::agent::PlannerHandle;
 use agents_core::persistence::Checkpointer;
 use agents_core::tools::ToolBox;
@@ -53,6 +53,7 @@ pub struct DeepAgentConfig {
     pub checkpointer: Option<Arc<dyn Checkpointer>>,
     pub event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     pub enable_pii_sanitization: bool,
+    pub token_tracking_config: Option<TokenTrackingConfig>,
 }
 
 impl DeepAgentConfig {
@@ -70,6 +71,7 @@ impl DeepAgentConfig {
             checkpointer: None,
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
+            token_tracking_config: None,
         }
     }
 
@@ -169,6 +171,12 @@ impl DeepAgentConfig {
     /// - PII patterns (emails, phones, credit cards) are removed
     pub fn with_pii_sanitization(mut self, enabled: bool) -> Self {
         self.enable_pii_sanitization = enabled;
+        self
+    }
+
+    /// Configure token tracking for monitoring LLM usage and costs.
+    pub fn with_token_tracking_config(mut self, config: TokenTrackingConfig) -> Self {
+        self.token_tracking_config = Some(config);
         self
     }
 }
