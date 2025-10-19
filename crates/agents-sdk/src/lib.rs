@@ -13,7 +13,7 @@
 //! ```rust,no_run
 //! # #[cfg(feature = "toolkit")]
 //! # {
-//! use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig};
+//! use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, OpenAiChatModel};
 //! use agents_core::persistence::InMemoryCheckpointer;
 //! use std::sync::Arc;
 //!
@@ -23,9 +23,12 @@
 //!         "gpt-4o-mini"
 //!     );
 //!
+//!     // Create the model
+//!     let model = Arc::new(OpenAiChatModel::new(config)?);
+//!
 //!     // Build an agent
 //!     let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
-//!         .with_openai_chat(config)?
+//!         .with_model(model)
 //!         .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))
 //!         .build()?;
 //!

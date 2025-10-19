@@ -4,7 +4,7 @@
 //! to monitor LLM usage, costs, and performance metrics.
 
 use agents_sdk::{
-    ConfigurableAgentBuilder, OpenAiConfig, TokenTrackingConfig, TokenCosts,
+    ConfigurableAgentBuilder, OpenAiConfig, OpenAiChatModel, TokenTrackingConfig, TokenCosts,
     RedisCheckpointer,
 };
 use agents_core::state::AgentStateSnapshot;
@@ -34,11 +34,14 @@ async fn main() -> anyhow::Result<()> {
         RedisCheckpointer::new("redis://127.0.0.1:6379").await?
     );
 
+    // Create the OpenAI model
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
+
     // Build agent with token tracking enabled
     let agent = ConfigurableAgentBuilder::new(
         "You are a helpful assistant. Answer questions concisely and accurately."
     )
-    .with_openai_chat(openai_config)?
+    .with_model(model)
     .with_token_tracking_config(token_config)
     .with_checkpointer(checkpointer)
     .build()?;
