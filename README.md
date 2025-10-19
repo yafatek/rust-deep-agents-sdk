@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/agents-runtime/badge.svg)](https://docs.rs/agents-runtime)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-High-performance Rust framework for composing reusable "deep" AI agents with custom tools, sub-agents, and prompts. This repository contains the SDK workspace, AWS integration helpers, documentation, and deployment scaffolding.
+A high-performance Rust framework for building AI agents with custom tools, sub-agents, and persistent state management. Built for production use with enterprise-grade features like token tracking, cost monitoring, and human-in-the-loop workflows.
 
 ## 🆕 What's New in v0.0.22
 
@@ -14,56 +14,28 @@ High-performance Rust framework for composing reusable "deep" AI agents with cus
 - **Performance Monitoring**: Request duration and throughput tracking
 - **Event Broadcasting**: Token usage events integrate with existing event system
 
-## Workspace Layout
-- `crates/agents-core` – Domain traits, message structures, prompt packs, and state models.
-- `crates/agents-runtime` – Tokio-powered runtime glue between planners, tools, and state stores.
-- `crates/agents-toolkit` – Built-in tools (mock filesystem, todo management) and utilities.
-- `crates/agents-aws` – AWS adapters (Secrets Manager, DynamoDB, CloudWatch) behind feature flags.
-- `examples/` – Reference agents; `getting-started` provides the echo smoke test.
-  - `agents-example-cli` provides a local CLI harness using OpenAI.
-- `deploy/` – Terraform modules and IaC assets for AWS environments.
-- `docs/` – Roadmap, ADRs, playbooks, and reference material.
-
-## Installation
-
-Add the unified SDK to your `Cargo.toml`:
-
-```toml
-# Simple installation (includes toolkit by default)
-[dependencies]
-agents-sdk = "0.0.22"
-
-# Or choose specific features:
-# agents-sdk = { version = "0.0.22", default-features = false }  # Core only
-# agents-sdk = { version = "0.0.22", features = ["aws"] }       # With AWS
-# agents-sdk = { version = "0.0.22", features = ["redis"] }     # With Redis persistence
-# agents-sdk = { version = "0.0.22", features = ["postgres"] }  # With PostgreSQL persistence
-# agents-sdk = { version = "0.0.22", features = ["dynamodb"] }  # With DynamoDB persistence
-# agents-sdk = { version = "0.0.22", features = ["full"] }      # Everything
-```
-
-### Individual Crates (Advanced)
-
-If you prefer granular control, you can also use individual crates:
-
-```toml
-[dependencies]
-agents-core = "0.0.22"      # Core traits and types
-agents-runtime = "0.0.22"   # Agent runtime and builders
-agents-toolkit = "0.0.22"   # Built-in tools (optional)
-agents-aws = "0.0.22"       # AWS integrations (optional)
-```
-
 ## Quick Start
 
-### Basic Agent with Tools
+### Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+agents-sdk = "0.0.22"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+```
+
+### Basic Agent
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, get_default_model};
 use agents_macros::tool;
+use agents_core::state::AgentStateSnapshot;
 use std::sync::Arc;
 
-// Define a tool using the #[tool] macro - it's that simple!
+// Define a tool using the #[tool] macro
 #[tool("Adds two numbers together")]
 fn add(a: i32, b: i32) -> i32 {
     a + b
@@ -71,7 +43,7 @@ fn add(a: i32, b: i32) -> i32 {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Configure OpenAI
+    // Create OpenAI configuration
     let config = OpenAiConfig::new(
         std::env::var("OPENAI_API_KEY")?,
         "gpt-4o-mini"
@@ -80,12 +52,10 @@ async fn main() -> anyhow::Result<()> {
     // Build an agent with tools
     let agent = ConfigurableAgentBuilder::new("You are a helpful math assistant.")
         .with_openai_chat(config)?
-        .with_tool(AddTool::as_tool())  // Tool name is auto-generated
+        .with_tool(AddTool::as_tool())
         .build()?;
 
     // Use the agent
-    use agents_sdk::state::AgentStateSnapshot;
-    
     let response = agent.handle_message(
         "What is 5 + 3?",
         Arc::new(AgentStateSnapshot::default())
@@ -97,14 +67,39 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-### Defining Tools
+## Core Features
 
-The `#[tool]` macro automatically generates the schema and wrapper code:
+### 🤖 Agent Builder API
+
+The `ConfigurableAgentBuilder` provides a fluent interface for constructing agents:
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, AnthropicConfig, GeminiConfig};
+
+// OpenAI
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_openai_chat(OpenAiConfig::new(api_key, "gpt-4o-mini")?)
+    .build()?;
+
+// Anthropic
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_anthropic_messages(AnthropicConfig::new(api_key, "claude-3-5-sonnet-20241022")?)
+    .build()?;
+
+// Gemini
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_gemini_chat(GeminiConfig::new(api_key, "gemini-2.0-flash-exp")?)
+    .build()?;
+```
+
+### 🛠️ Tool System
+
+Define tools using the `#[tool]` macro:
 
 ```rust
 use agents_macros::tool;
 
-// Simple tool
+// Simple synchronous tool
 #[tool("Multiplies two numbers")]
 fn multiply(a: f64, b: f64) -> f64 {
     a * b
@@ -125,68 +120,49 @@ fn search(query: String, max_results: Option<u32>) -> Vec<String> {
     vec![]
 }
 
-// Use the tools:
-let tools = vec![
-    MultiplyTool::as_tool(),
-    GetUserTool::as_tool(),
-    SearchTool::as_tool(),
-];
+// Use the tools
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_tools(vec![
+        MultiplyTool::as_tool(),
+        GetUserTool::as_tool(),
+        SearchTool::as_tool(),
+    ])
+    .build()?;
 ```
 
-### Using Persistence Backends
+### 💾 State Persistence
 
-Choose the persistence layer that fits your infrastructure:
+Choose from multiple persistence backends:
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, InMemoryCheckpointer};
-use std::sync::Arc;
+use agents_sdk::{ConfigurableAgentBuilder, InMemoryCheckpointer, RedisCheckpointer};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // InMemory (default, no external dependencies)
-    let checkpointer = Arc::new(InMemoryCheckpointer::new());
-    
-    // Redis (requires redis feature)
-    #[cfg(feature = "redis")]
-    let checkpointer = Arc::new(
-        agents_sdk::RedisCheckpointer::new("redis://127.0.0.1:6379").await?
-    );
-    
-    // PostgreSQL (requires postgres feature)
-    #[cfg(feature = "postgres")]
-    let checkpointer = Arc::new(
-        agents_sdk::PostgresCheckpointer::new("postgresql://user:pass@localhost/agents").await?
-    );
-    
-    // DynamoDB (requires dynamodb feature)
-    #[cfg(feature = "dynamodb")]
-    let checkpointer = Arc::new(
-        agents_sdk::DynamoDbCheckpointer::new("agent-checkpoints").await?
-    );
+// In-memory (development)
+let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
-    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-        .with_checkpointer(checkpointer)
-        .build()?;
+// Redis (production)
+let checkpointer = Arc::new(
+    RedisCheckpointer::new("redis://127.0.0.1:6379").await?
+);
 
-    // Save and load state across sessions
-    let thread_id = "user-123";
-    agent.save_state(thread_id).await?;
-    agent.load_state(thread_id).await?;
-    
-    Ok(())
-}
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_checkpointer(checkpointer)
+    .build()?;
+
+// Save and load state across sessions
+let thread_id = "user-123";
+agent.save_state(&thread_id).await?;
+agent.load_state(&thread_id).await?;
 ```
 
-See [`examples/checkpointer-demo`](examples/checkpointer-demo) for a complete working example.
+### 📊 Token Tracking & Cost Monitoring
 
-### Token Tracking & Cost Monitoring
-
-Monitor LLM usage, costs, and performance metrics with built-in token tracking:
+Monitor LLM usage and costs with built-in token tracking:
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, TokenTrackingConfig, TokenCosts};
-
-let config = OpenAiConfig::new(api_key, "gpt-4o-mini");
+use agents_sdk::{ConfigurableAgentBuilder, TokenTrackingConfig, TokenCosts};
 
 // Enable token tracking with default settings
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
@@ -209,97 +185,44 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
 ```
 
 **Features:**
-- **Real-time tracking**: Monitors all LLM requests automatically
-- **Cost estimation**: Supports OpenAI, Anthropic, and Gemini pricing
-- **Event broadcasting**: Integrates with existing event system
-- **Performance metrics**: Tracks request duration and throughput
-- **Flexible configuration**: Enable/disable features as needed
+- Real-time token usage tracking
+- Cost estimation with predefined pricing models
+- Performance metrics (duration, throughput)
+- Event broadcasting integration
+- Flexible configuration options
 
-**Token Usage Events:**
-```rust
-use agents_core::events::{AgentEvent, EventBroadcaster};
-use async_trait::async_trait;
+### 🔒 Human-in-the-Loop (HITL)
 
-struct TokenUsageBroadcaster;
-
-#[async_trait]
-impl EventBroadcaster for TokenUsageBroadcaster {
-    fn id(&self) -> &str { "token_usage" }
-    
-    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
-        if let AgentEvent::TokenUsage(token_event) = event {
-            let usage = &token_event.usage;
-            println!(
-                "Token Usage: {} input, {} output, ${:.4} cost",
-                usage.input_tokens,
-                usage.output_tokens,
-                usage.estimated_cost
-            );
-        }
-        Ok(())
-    }
-}
-
-// Add broadcaster to agent
-let broadcaster = Arc::new(TokenUsageBroadcaster);
-agent.add_broadcaster(broadcaster);
-```
-
-See [`examples/token-tracking-demo`](examples/token-tracking-demo) for a complete working example and [`docs/TOKEN_TRACKING.md`](docs/TOKEN_TRACKING.md) for detailed documentation.
-
-### Human-in-the-Loop (HITL) Tool Approval
-
-The HITL middleware allows you to require human approval before executing specific tools. This is essential for:
-- **Critical Operations**: Database modifications, file deletions, API calls with side effects
-- **Security Review**: Operations that access sensitive data or external systems
-- **Cost Control**: Expensive API calls or resource-intensive operations
-- **Compliance**: Operations requiring audit trails or manual oversight
-
-#### Quick Start - HITL in 3 Steps
-
-**Step 1: Configure HITL Policies**
+Require human approval for critical operations:
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy, persistence::InMemoryCheckpointer};
-use std::sync::Arc;
+use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy};
+use std::collections::HashMap;
 
-// Step 1: Define HITL policies
-let checkpointer = Arc::new(InMemoryCheckpointer::new());
-
-let mut agent_builder = ConfigurableAgentBuilder::new(
-    "You are a helpful assistant. When users request operations, call the appropriate tools immediately."
-)
-.with_model(get_default_model()?)
-.with_tools(vec![/* your tools */]);
-
-// Add HITL policy for each critical tool
-agent_builder = agent_builder.with_tool_interrupt(
-    "delete_file",
+// Configure HITL policies
+let mut policies = HashMap::new();
+policies.insert(
+    "delete_file".to_string(),
     HitlPolicy {
-        allow_auto: false,  // Requires approval
+        allow_auto: false,
         note: Some("File deletion requires security review".to_string()),
     }
 );
 
-let agent = agent_builder
-    .with_checkpointer(checkpointer)  // Required for HITL!
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_tool_interrupts(policies)
+    .with_checkpointer(checkpointer)  // Required for HITL
     .build()?;
-```
 
-**Step 2: Handle Interrupts**
-
-```rust
-use agents_sdk::{hitl::HitlAction, state::AgentStateSnapshot};
-
-// Agent will pause when it tries to call a restricted tool
-match agent.handle_message("Delete the old_data.txt file", Arc::new(AgentStateSnapshot::default())).await {
+// Handle interrupts
+match agent.handle_message("Delete the old_data.txt file", state).await {
     Ok(response) => {
         // Check if execution was paused
         if let Some(text) = response.content.as_text() {
             if text.contains("paused") || text.contains("approval") {
                 // HITL was triggered!
-                if let Some(interrupt) = agent.current_interrupt() {
-                    // Show interrupt details to human
+                if let Some(interrupt) = agent.current_interrupt().await? {
                     println!("Tool: {}", interrupt.tool_name);
                     println!("Args: {}", interrupt.tool_args);
                 }
@@ -308,210 +231,173 @@ match agent.handle_message("Delete the old_data.txt file", Arc::new(AgentStateSn
     }
     Err(e) => println!("Error: {}", e),
 }
-```
 
-**Step 3: Resume with Approval**
-
-```rust
-// After human reviews and approves
+// Resume with approval
 agent.resume_with_approval(HitlAction::Accept).await?;
-
-// Or modify the arguments
-agent.resume_with_approval(HitlAction::Edit {
-    tool_name: "delete_file".to_string(),
-    tool_args: json!({"path": "/safe/path/file.txt"}),
-}).await?;
-
-// Or reject
-agent.resume_with_approval(HitlAction::Reject {
-    reason: Some("Operation not authorized".to_string()),
-}).await?;
 ```
 
-**Important**: HITL requires a checkpointer to persist interrupt state. If no checkpointer is configured, HITL will be automatically disabled with a warning.
+### 📡 Event System
 
-#### HITL Policy Structure
-
-The `HitlPolicy` struct controls tool execution behavior:
+Real-time progress tracking and multi-channel notifications:
 
 ```rust
-pub struct HitlPolicy {
-    /// If true, tool executes automatically without approval
-    /// If false, execution pauses and waits for human response
-    pub allow_auto: bool,
+use agents_sdk::{ConfigurableAgentBuilder, EventBroadcaster};
+use agents_core::events::AgentEvent;
+use async_trait::async_trait;
+
+struct ConsoleLogger;
+
+#[async_trait]
+impl EventBroadcaster for ConsoleLogger {
+    fn id(&self) -> &str { "console" }
     
-    /// Optional note explaining why approval is needed
-    /// Shown to humans when reviewing the interrupt
-    pub note: Option<String>,
-}
-```
-
-#### Handling Interrupts
-
-When a tool requires approval, the agent execution pauses and creates an interrupt:
-
-```rust
-use agents_sdk::{AgentMessage, MessageContent, MessageRole};
-use std::sync::Arc;
-
-// Agent encounters a tool requiring approval
-let result = agent.handle_message(
-    "Delete the old_data.txt file",
-    Arc::new(AgentStateSnapshot::default())
-).await;
-
-// Execution pauses with an interrupt error
-match result {
-    Err(e) if e.to_string().contains("HITL interrupt") => {
-        println!("Tool execution requires approval!");
-        
-        // Check the current interrupt
-        if let Some(interrupt) = agent.current_interrupt().await? {
-            match interrupt {
-                AgentInterrupt::HumanInLoop(hitl) => {
-                    println!("Tool: {}", hitl.tool_name);
-                    println!("Args: {}", hitl.tool_args);
-                    println!("Note: {:?}", hitl.policy_note);
-                    println!("Call ID: {}", hitl.call_id);
-                }
-            }
+    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
+        match event {
+            AgentEvent::AgentStarted(e) => println!("🚀 Agent started: {}", e.agent_name),
+            AgentEvent::ToolStarted(e) => println!("🔧 Tool started: {}", e.tool_name),
+            AgentEvent::ToolCompleted(e) => println!("✅ Tool completed: {}", e.tool_name),
+            AgentEvent::TokenUsage(e) => println!("📊 Token usage: ${:.4}", e.usage.estimated_cost),
+            _ => {}
         }
+        Ok(())
     }
-    _ => {}
 }
+
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_event_broadcaster(Arc::new(ConsoleLogger))
+    .build()?;
 ```
 
-#### Responding to Interrupts
+### 🔐 Security & PII Protection
 
-Use `HitlAction` to respond to interrupts:
+Built-in security features prevent PII leakage:
 
 ```rust
-use agents_sdk::HitlAction;
+// PII sanitization is enabled by default
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .build()?;
 
-// 1. Accept - Execute with original arguments
-agent.resume_with_approval(HitlAction::Accept).await?;
+// Events automatically have:
+// - Message previews truncated to 100 characters
+// - Sensitive fields (passwords, tokens, etc.) redacted
+// - PII patterns (emails, phones, credit cards) removed
 
-// 2. Edit - Execute with modified arguments
-agent.resume_with_approval(HitlAction::Edit {
-    tool_name: "delete_file".to_string(),
-    tool_args: json!({"path": "/safe/path/file.txt"}),  // Modified path
-}).await?;
-
-// 3. Reject - Cancel execution with optional reason
-agent.resume_with_approval(HitlAction::Reject {
-    reason: Some("Operation not authorized".to_string()),
-}).await?;
-
-// 4. Respond - Provide custom message instead of executing
-agent.resume_with_approval(HitlAction::Respond {
-    message: AgentMessage {
-        role: MessageRole::Agent,
-        content: MessageContent::Text(
-            "I cannot delete that file. Please use the archive tool instead.".to_string()
-        ),
-        metadata: None,
-    },
-}).await?;
+// Disable only if you need raw data and have other security measures
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_pii_sanitization(false)  // Not recommended for production
+    .build()?;
 ```
 
-#### Complete HITL Example
+## Advanced Features
+
+### Sub-Agents
+
+Delegate tasks to specialized sub-agents:
 
 ```rust
-use agents_sdk::{
-    ConfigurableAgentBuilder, HitlPolicy, HitlAction, AgentInterrupt,
-    InMemoryCheckpointer, AgentMessage, MessageContent, MessageRole,
+use agents_sdk::{ConfigurableAgentBuilder, SubAgentConfig};
+
+let subagent = SubAgentConfig {
+    name: "data-processor".to_string(),
+    description: "Processes complex data with custom logic".to_string(),
+    instructions: "You are a data processing specialist.".to_string(),
+    tools: vec![/* specialized tools */],
 };
-use std::collections::HashMap;
-use std::sync::Arc;
-use serde_json::json;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Configure HITL policies
-    let mut policies = HashMap::new();
-    policies.insert(
-        "execute_command".to_string(),
-        HitlPolicy {
-            allow_auto: false,
-            note: Some("Shell commands require security review".to_string()),
-        }
-    );
-
-    // Build agent with HITL and checkpointer
-    let checkpointer = Arc::new(InMemoryCheckpointer::new());
-    let agent = ConfigurableAgentBuilder::new(
-        "You are a system administrator assistant."
-    )
-        .with_tool_interrupts(policies)
-        .with_checkpointer(checkpointer)
-        .build()?;
-
-    // User request triggers a tool requiring approval
-    let result = agent.handle_message(
-        "Run 'rm -rf /tmp/cache' to clear the cache",
-        Arc::new(AgentStateSnapshot::default())
-    ).await;
-
-    // Handle the interrupt
-    if result.is_err() {
-        if let Some(interrupt) = agent.current_interrupt().await? {
-            match interrupt {
-                AgentInterrupt::HumanInLoop(hitl) => {
-                    println!("⚠️  Approval Required");
-                    println!("Tool: {}", hitl.tool_name);
-                    println!("Command: {}", hitl.tool_args);
-                    
-                    // Human reviews and decides
-                    let user_decision = get_user_approval(); // Your UI logic
-                    
-                    match user_decision {
-                        "approve" => {
-                            agent.resume_with_approval(HitlAction::Accept).await?;
-                            println!("✅ Command executed");
-                        }
-                        "modify" => {
-                            // Safer alternative
-                            agent.resume_with_approval(HitlAction::Edit {
-                                tool_name: "execute_command".to_string(),
-                                tool_args: json!({"command": "rm -rf /tmp/cache/*.tmp"}),
-                            }).await?;
-                            println!("✅ Modified command executed");
-                        }
-                        "reject" => {
-                            agent.resume_with_approval(HitlAction::Reject {
-                                reason: Some("Too dangerous".to_string()),
-                            }).await?;
-                            println!("❌ Command rejected");
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn get_user_approval() -> &'static str {
-    // Your approval UI logic here
-    "approve"
-}
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_subagent(subagent)
+    .with_auto_general_purpose(true)  // Enable automatic delegation
+    .build()?;
 ```
 
-**See Complete Example**: [`examples/hitl-financial-advisor`](examples/hitl-financial-advisor) - Full working demo with real OpenAI integration, showing transfer approvals, sub-agents, and all HITL actions.
+### Built-in Tools
 
-#### HITL Best Practices
+The SDK includes useful built-in tools:
 
-1. **Always use a checkpointer**: HITL requires state persistence to work correctly
-2. **Provide clear policy notes**: Help humans understand why approval is needed
-3. **Handle all action types**: Support Accept, Edit, Reject, and Respond in your UI
-4. **Log interrupt decisions**: Maintain audit trails for compliance
-5. **Test interrupt scenarios**: Verify your approval workflow handles edge cases
-6. **Consider timeout policies**: Decide how long to wait for human response
-7. **Use appropriate granularity**: Not every tool needs approval - focus on critical operations
+```rust
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_builtin_tools(vec![
+        "write_todos".to_string(),
+        "ls".to_string(),
+        "read_file".to_string(),
+        "write_file".to_string(),
+    ])
+    .build()?;
+```
 
-### Development Setup (From Source)
+### Prompt Caching
+
+Optimize performance with prompt caching:
+
+```rust
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_prompt_caching(true)
+    .build()?;
+```
+
+## Examples
+
+The SDK includes comprehensive examples:
+
+- [`simple-agent`](examples/simple-agent) - Basic agent with OpenAI
+- [`token-tracking-demo`](examples/token-tracking-demo) - Token usage monitoring
+- [`hitl-financial-advisor`](examples/hitl-financial-advisor) - Human-in-the-loop workflows
+- [`event-system-demo`](examples/event-system-demo) - Event broadcasting
+- [`checkpointer-demo`](examples/checkpointer-demo) - State persistence
+- [`subagent-demo`](examples/subagent-demo) - Sub-agent delegation
+
+Run examples:
+
+```bash
+# Clone the repository
+git clone https://github.com/yafatek/rust-deep-agents-sdk.git
+cd rust-deep-agents-sdk
+
+# Run a specific example
+cargo run --example simple-agent
+cargo run --example token-tracking-demo
+```
+
+## Architecture
+
+### Workspace Layout
+
+- `crates/agents-core` - Core traits, message structures, and state models
+- `crates/agents-runtime` - Runtime engine, builders, and middleware
+- `crates/agents-toolkit` - Built-in tools and utilities
+- `crates/agents-aws` - AWS integrations (DynamoDB, Secrets Manager)
+- `crates/agents-persistence` - Persistence backends (Redis, PostgreSQL)
+- `crates/agents-sdk` - Unified SDK with feature flags
+- `examples/` - Working examples and demos
+- `docs/` - Documentation and guides
+
+### Middleware Stack
+
+The SDK includes a powerful middleware system:
+
+- **Planning Middleware**: Todo list management
+- **Filesystem Middleware**: Mock filesystem operations
+- **SubAgent Middleware**: Task delegation
+- **HITL Middleware**: Human approval workflows
+- **Token Tracking Middleware**: Usage and cost monitoring
+- **Summarization Middleware**: Context window management
+- **PII Sanitization**: Automatic data protection
+
+### Provider Support
+
+- **OpenAI**: GPT models (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo)
+- **Anthropic**: Claude models (claude-3-5-sonnet-20241022, claude-3-haiku-20240307)
+- **Gemini**: Google's Gemini models (gemini-2.0-flash-exp, gemini-1.5-pro)
+
+## Development
+
+### Building from Source
 
 ```bash
 git clone https://github.com/yafatek/rust-deep-agents-sdk.git
@@ -519,352 +405,89 @@ cd rust-deep-agents-sdk
 
 # Format, lint, and test
 cargo fmt
-cargo clippy --all-targets --all-features
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all
 
-# Run examples
-cargo run --example simple-agent
-cargo run --example deep-research-agent
-cargo run --example checkpointer-demo
+# Build release
+cargo build --release
 ```
 
-## Security & PII Protection
+### Feature Flags
 
-The SDK includes built-in security features to prevent PII (Personally Identifiable Information) leakage in event data and logs.
+The SDK supports feature flags for modular functionality:
 
-### Automatic PII Sanitization
+```toml
+[dependencies]
+agents-sdk = { version = "0.0.22", features = ["aws", "redis"] }
 
-**Enabled by default** - All event data is automatically sanitized to protect sensitive information:
-
-```rust
-use agents_sdk::ConfigurableAgentBuilder;
-
-// PII sanitization is enabled by default
-let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_model(model)
-    .build()?;
-
-// Events will automatically have:
-// - Message previews truncated to 100 characters
-// - Sensitive fields (passwords, tokens, etc.) redacted
-// - PII patterns (emails, phones, credit cards) removed
+# Available features:
+# - "aws" - AWS integrations (DynamoDB, Secrets Manager)
+# - "redis" - Redis persistence backend
+# - "postgres" - PostgreSQL persistence backend
+# - "dynamodb" - DynamoDB persistence backend
+# - "full" - All features enabled
 ```
 
-### Disabling PII Sanitization
+### Environment Variables
 
-Only disable if you need raw data and have other security measures in place:
+Required environment variables:
 
-```rust
-// Explicitly disable (not recommended for production)
-let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_model(model)
-    .with_pii_sanitization(false)  // Disable sanitization
-    .build()?;
+```bash
+# OpenAI
+export OPENAI_API_KEY="your-openai-api-key"
+
+# Anthropic
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+
+# Gemini
+export GOOGLE_API_KEY="your-google-api-key"
+
+# Optional: Tavily for web search
+export TAVILY_API_KEY="your-tavily-api-key"
 ```
 
-### What Gets Sanitized
+## Performance
 
-**Sensitive Field Detection** (case-insensitive):
-- `password`, `passwd`, `pwd`
-- `secret`, `token`, `api_key`, `apikey`
-- `access_token`, `refresh_token`, `auth_token`
-- `authorization`, `bearer`
-- `credit_card`, `card_number`, `cvv`
-- `ssn`, `social_security`
-- `private_key`, `privatekey`, `encryption_key`
+The Rust SDK is designed for high performance:
 
-**PII Pattern Detection**:
-- **Emails**: `john@example.com` → `[EMAIL]`
-- **Phone Numbers**: `555-123-4567` → `[PHONE]`
-- **Credit Cards**: `4532-1234-5678-9010` → `[CARD]`
+- **Memory Efficient**: Zero-copy message handling where possible
+- **Async First**: Built on Tokio for concurrent operations
+- **Type Safe**: Compile-time guarantees for agent configurations
+- **Fast Compilation**: Optimized build times with feature flags
+- **Low Latency**: Minimal overhead for tool calls and state management
 
-**Message Truncation**:
-- All message previews limited to 100 characters
-- Tool payloads truncated to prevent excessive data exposure
+## Contributing
 
-### Manual Sanitization
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-Use the security utilities directly in your custom code:
+### Development Setup
 
-```rust
-use agents_core::security::{
-    safe_preview,
-    sanitize_tool_payload,
-    sanitize_json,
-    redact_pii,
-    MAX_PREVIEW_LENGTH,
-};
-use serde_json::json;
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Run `cargo fmt` and `cargo clippy`
+6. Submit a pull request
 
-// Sanitize text with PII redaction
-let text = "Contact me at john@example.com or call 555-123-4567";
-let safe_text = safe_preview(text, MAX_PREVIEW_LENGTH);
-// Output: "Contact me at [EMAIL] or call [PHONE]"
+## License
 
-// Sanitize JSON objects
-let payload = json!({
-    "username": "john",
-    "password": "secret123",
-    "api_key": "sk-1234567890"
-});
-let clean = sanitize_json(&payload);
-// Output: {"username": "john", "password": "[REDACTED]", "api_key": "[REDACTED]"}
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-// Sanitize tool payloads (combines JSON sanitization + PII redaction + truncation)
-let sanitized = sanitize_tool_payload(&payload, MAX_PREVIEW_LENGTH);
+## Support
 
-// Redact PII patterns only
-let text = "My email is john@example.com";
-let redacted = redact_pii(text);
-// Output: "My email is [EMAIL]"
-```
+- 📖 [Documentation](https://docs.rs/agents-runtime)
+- 🐛 [Issue Tracker](https://github.com/yafatek/rust-deep-agents-sdk/issues)
+- 💬 [Discussions](https://github.com/yafatek/rust-deep-agents-sdk/discussions)
 
-### Security Best Practices
+## Roadmap
 
-1. **Keep PII sanitization enabled** - It's on by default for a reason
-2. **Review event broadcasters** - Ensure they don't log raw data
-3. **Use HTTPS/TLS** - Encrypt data in transit
-4. **Audit logs** - Monitor for potential PII leaks
-5. **Test sanitization** - Verify PII is properly redacted in your use case
-6. **Limit data retention** - Don't store event data longer than necessary
-7. **Access control** - Restrict who can view event data
+- [ ] Custom sub-agent execution graphs
+- [ ] Dict-based model configuration
+- [ ] Advanced state features (encryption, migrations)
+- [ ] Enhanced tool system (composition, validation)
+- [ ] Performance optimizations
+- [ ] Additional LLM providers
 
-### Example: Secure Event Broadcasting
+---
 
-```rust
-use agents_core::events::{AgentEvent, EventBroadcaster};
-use agents_core::security::{safe_preview, MAX_PREVIEW_LENGTH};
-use async_trait::async_trait;
-
-pub struct SecureLogBroadcaster;
-
-#[async_trait]
-impl EventBroadcaster for SecureLogBroadcaster {
-    fn id(&self) -> &str {
-        "secure_log"
-    }
-    
-    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
-        match event {
-            AgentEvent::ToolStarted(e) => {
-                // Input is already sanitized by runtime when PII sanitization is enabled
-                tracing::info!(
-                    tool_name = %e.tool_name,
-                    input = %e.input_summary,  // Already safe!
-                    "Tool started"
-                );
-            }
-            AgentEvent::AgentStarted(e) => {
-                // Message preview is already sanitized
-                tracing::info!(
-                    agent = %e.agent_name,
-                    message = %e.message_preview,  // Already safe!
-                    "Agent started"
-                );
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-}
-```
-
-**See Documentation**: [Event System Security](docs/EVENT_SYSTEM.md#security-considerations) for complete security guidelines.
-
-## Event System
-
-The SDK includes a powerful event broadcasting system for real-time progress tracking and multi-channel notifications.
-
-### Quick Start
-
-```rust
-use agents_sdk::{ConfigurableAgentBuilder, EventDispatcher, EventBroadcaster};
-use agents_core::events::AgentEvent;
-use async_trait::async_trait;
-use std::sync::Arc;
-
-// Define a custom broadcaster
-struct ConsoleLogger;
-
-#[async_trait]
-impl EventBroadcaster for ConsoleLogger {
-    fn id(&self) -> &str {
-        "console"
-    }
-    
-    async fn broadcast(&self, event: &AgentEvent) -> anyhow::Result<()> {
-        match event {
-            AgentEvent::AgentStarted(e) => println!("🚀 Agent started: {}", e.agent_name),
-            AgentEvent::ToolStarted(e) => println!("🔧 Tool started: {}", e.tool_name),
-            AgentEvent::ToolCompleted(e) => println!("✅ Tool completed: {}", e.tool_name),
-            _ => {}
-        }
-        Ok(())
-    }
-}
-
-// Add to agent
-let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_event_broadcaster(Arc::new(ConsoleLogger))
-    .build()?;
-```
-
-### Event Types
-
-The system emits 10+ event types covering the full agent lifecycle:
-
-- `AgentStarted` / `AgentCompleted` - Agent execution lifecycle
-- `ToolStarted` / `ToolCompleted` / `ToolFailed` - Tool execution tracking
-- `SubAgentStarted` / `SubAgentCompleted` - Sub-agent delegation
-- `TodosUpdated` - Todo list changes
-- `StateCheckpointed` - State persistence events
-- `PlanningComplete` - Planner decisions
-
-### Multi-Channel Broadcasting
-
-Broadcast to multiple channels simultaneously:
-
-```rust
-let mut dispatcher = EventDispatcher::new();
-dispatcher.add_broadcaster(Arc::new(ConsoleLogger));
-dispatcher.add_broadcaster(Arc::new(WhatsAppBroadcaster::new(phone)));
-dispatcher.add_broadcaster(Arc::new(SseBroadcaster::new(sse_sender, thread_id)));
-
-let agent = ConfigurableAgentBuilder::new("instructions")
-    .with_event_dispatcher(Arc::new(dispatcher))
-    .build()?;
-```
-
-### Documentation
-
-- **[Event System Guide](docs/EVENT_SYSTEM.md)** - Complete documentation with examples
-- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Migrating from agent_progress_subscriber
-- **[Event System Demo](examples/event-system-demo/)** - Working example
-
-## Features
-
-### ✅ Core Features (Python Parity Achieved)
-
-**Agent Builder API**
-- `ConfigurableAgentBuilder` with fluent interface matching Python's API
-- `.with_model()` method supporting OpenAI, Anthropic, and Gemini models
-- `.get_default_model()` function returning pre-configured Claude Sonnet 4
-- Async and sync agent creation: `create_deep_agent()` and `create_async_deep_agent()`
-
-**Middleware Stack**
-- **Planning Middleware**: Todo list management with comprehensive tool descriptions
-- **Filesystem Middleware**: Mock filesystem with `ls`, `read_file`, `write_file`, `edit_file` tools
-- **SubAgent Middleware**: Task delegation to specialized sub-agents
-- **HITL (Human-in-the-Loop)**: Tool execution interrupts with approval policies
-  - Configurable per-tool approval requirements
-  - Support for Accept, Edit, Reject, and Respond actions
-  - Automatic state persistence with checkpointer integration
-  - Policy notes for human reviewers
-- **Summarization Middleware**: Context window management
-- **AnthropicPromptCaching**: Automatic prompt caching for efficiency
-
-**State Management**
-- **State Reducers**: Smart merging functions matching Python's `file_reducer` behavior
-- **Persistence**: `Checkpointer` trait with multiple backend implementations
-- **Thread Management**: Save/load/delete agent conversation threads
-
-**Persistence Backends**
-- **InMemory**: Built-in, zero-config persistence (development)
-- **Redis**: High-performance in-memory data store with optional durability
-- **PostgreSQL**: ACID-compliant relational database with full SQL support
-- **DynamoDB**: AWS-managed NoSQL database with auto-scaling
-
-**Provider Support**
-- **Anthropic**: Claude models with prompt caching support
-- **OpenAI**: GPT models integration  
-- **Gemini**: Google's Gemini Chat models
-
-**Built-in Tools**
-- **Todo Management**: `write_todos` with detailed usage examples
-- **File Operations**: Full CRUD operations on mock filesystem
-- **Task Delegation**: `task` tool for spawning ephemeral sub-agents
-
-**Security Features**
-- **PII Sanitization**: Automatic redaction of sensitive data in events (enabled by default)
-  - Sensitive field detection (passwords, tokens, API keys, etc.)
-  - PII pattern matching (emails, phones, credit cards)
-  - Message truncation to prevent data leakage
-  - Configurable via `.with_pii_sanitization(bool)`
-- **Manual Security Utilities**: `safe_preview()`, `sanitize_json()`, `redact_pii()`, `sanitize_tool_payload()`
-
-**Token Tracking & Cost Management**
-- **Usage Monitoring**: Real-time tracking of input/output tokens for all LLM requests
-- **Cost Estimation**: Built-in pricing models for OpenAI, Anthropic, and Gemini
-- **Performance Metrics**: Request duration and throughput tracking
-- **Event Integration**: Token usage events integrate with existing event broadcasting system
-- **Flexible Configuration**: Enable/disable tracking, logging, and event emission independently
-- **Custom Cost Models**: Support for custom pricing models and provider-specific costs
-
-### 🚧 Future Features (Planned)
-
-#### Custom SubAgent Support
-Enable users to define completely custom execution graphs beyond simple prompt/tool configurations:
-
-```rust
-// Future API design
-let custom_subagent = CustomSubAgent {
-    name: "data-processor".to_string(),
-    description: "Processes complex data with custom logic".to_string(),
-    graph: Box::new(MyCustomGraph::new()), // Custom execution graph
-};
-
-let agent = ConfigurableAgentBuilder::new("main instructions")
-    .with_custom_subagent(custom_subagent)
-    .build()?;
-```
-
-**Benefits:**
-- Full control over sub-agent execution flow
-- Custom state management within sub-agents  
-- Complex branching and conditional logic
-- Integration with external systems and APIs
-
-#### Dict-based Model Configuration
-Allow models to be configured via dictionary/struct configs in addition to instances:
-
-```rust
-// Future API design
-let agent = ConfigurableAgentBuilder::new("main instructions")
-    .with_model_config(ModelConfig {
-        provider: "anthropic".to_string(),
-        model: "claude-sonnet-4".to_string(),
-        max_tokens: 64000,
-        temperature: 0.1,
-        // ... other provider-specific options
-    })
-    .build()?;
-```
-
-**Benefits:**
-- Simplified configuration management
-- Easy serialization/deserialization of agent configs
-- Runtime model switching without code changes
-- Better integration with configuration management systems
-
-#### Advanced State Features
-- **Distributed State Stores**: Redis, DynamoDB backends for multi-agent systems
-- **State Migrations**: Schema evolution support for long-running agents
-- **State Encryption**: Automatic encryption for sensitive data
-- **Custom Reducers**: User-defined state merging logic beyond built-in reducers
-
-#### Enhanced Tool System  
-- **Dynamic Tool Registration**: Runtime tool addition/removal
-- **Tool Composition**: Combining multiple tools into workflows
-- **Tool Validation**: Schema-based input/output validation
-- **Tool Metrics**: Performance and usage analytics
-
-## Support the Project
-
-If you find this project helpful, consider supporting its development:
-
-[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/yafacs)
-
-Your support helps maintain and improve this open-source project. Thank you! ❤️
-
-## Next Steps
-Follow the [roadmap](docs/ROADMAP.md) to implement planners, runtime orchestration, AWS integrations, and customer-ready templates.
+**Built with ❤️ in Rust for the AI community**
