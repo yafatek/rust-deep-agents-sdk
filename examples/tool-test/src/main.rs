@@ -1,7 +1,7 @@
 use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
 use agents_macros::tool;
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig};
 use std::sync::Arc;
 
 /// Simple tool to add two numbers together
@@ -133,8 +133,9 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     let openai_config = OpenAiConfig::new(api_key.clone(), "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
     let agent = ConfigurableAgentBuilder::new(system_prompt)
-        .with_openai_chat(openai_config)?
+        .with_model(model)
         .with_tools(tools)
         .with_checkpointer(checkpointer)
         .build()?;
@@ -161,8 +162,9 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     let openai_config = OpenAiConfig::new(api_key.clone(), "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
     let agent = ConfigurableAgentBuilder::new(system_prompt)
-        .with_openai_chat(openai_config)?
+        .with_model(model)
         .with_tools(tools)
         .with_checkpointer(checkpointer)
         .build()?;
@@ -189,8 +191,9 @@ IMPORTANT: You MUST use tools when appropriate. For example:
     let openai_config = OpenAiConfig::new(api_key, "gpt-4o-mini");
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
     let agent = ConfigurableAgentBuilder::new(system_prompt)
-        .with_openai_chat(openai_config)?
+        .with_model(model)
         .with_tools(tools)
         .with_checkpointer(checkpointer)
         .build()?;

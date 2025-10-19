@@ -3,7 +3,9 @@
 //! This module provides the ConfigurableAgentBuilder that offers a fluent interface
 //! for building Deep Agents, mirroring the Python SDK's ergonomic construction patterns.
 
-use super::api::{create_async_deep_agent_from_config, create_deep_agent_from_config};
+use super::api::{
+    create_async_deep_agent_from_config, create_deep_agent_from_config, get_default_model,
+};
 use super::config::{DeepAgentConfig, SubAgentConfig, SummarizationConfig};
 use super::runtime::DeepAgent;
 use crate::middleware::{
@@ -11,10 +13,6 @@ use crate::middleware::{
     HitlPolicy,
 };
 use crate::planner::LlmBackedPlanner;
-use crate::providers::{
-    AnthropicConfig, AnthropicMessagesModel, GeminiChatModel, GeminiConfig, OpenAiChatModel,
-    OpenAiConfig,
-};
 use agents_core::agent::PlannerHandle;
 use agents_core::llm::LanguageModel;
 use agents_core::persistence::Checkpointer;
@@ -70,63 +68,6 @@ impl ConfigurableAgentBuilder {
     pub fn with_planner(mut self, planner: Arc<dyn PlannerHandle>) -> Self {
         self.planner = Some(planner);
         self
-    }
-
-    /// Convenience method for OpenAI models (equivalent to model=OpenAiChatModel)
-    /// 
-    /// # Deprecated
-    /// 
-    /// This method is deprecated. Use `with_model()` with `OpenAiChatModel::new(config)?` instead.
-    /// 
-    /// Example:
-    /// ```rust
-    /// let model = Arc::new(OpenAiChatModel::new(config)?);
-    /// let agent = ConfigurableAgentBuilder::new("instructions")
-    ///     .with_model(model)
-    ///     .build()?;
-    /// ```
-    #[deprecated(since = "0.0.22", note = "Use with_model() with OpenAiChatModel::new() instead")]
-    pub fn with_openai_chat(self, config: OpenAiConfig) -> anyhow::Result<Self> {
-        let model = Arc::new(OpenAiChatModel::new(config)?);
-        Ok(self.with_model(model))
-    }
-
-    /// Convenience method for Anthropic models (equivalent to model=AnthropicMessagesModel)
-    /// 
-    /// # Deprecated
-    /// 
-    /// This method is deprecated. Use `with_model()` with `AnthropicMessagesModel::new(config)?` instead.
-    /// 
-    /// Example:
-    /// ```rust
-    /// let model = Arc::new(AnthropicMessagesModel::new(config)?);
-    /// let agent = ConfigurableAgentBuilder::new("instructions")
-    ///     .with_model(model)
-    ///     .build()?;
-    /// ```
-    #[deprecated(since = "0.0.22", note = "Use with_model() with AnthropicMessagesModel::new() instead")]
-    pub fn with_anthropic_messages(self, config: AnthropicConfig) -> anyhow::Result<Self> {
-        let model = Arc::new(AnthropicMessagesModel::new(config)?);
-        Ok(self.with_model(model))
-    }
-
-    /// Convenience method for Gemini models (equivalent to model=GeminiChatModel)
-    /// 
-    /// # Deprecated
-    /// 
-    /// This method is deprecated. Use `with_model()` with `GeminiChatModel::new(config)?` instead.
-    /// 
-    /// Example:
-    /// ```rust
-    /// let model = Arc::new(GeminiChatModel::new(config)?);
-    /// let agent = ConfigurableAgentBuilder::new("instructions")
-    ///     .with_model(model)
-    ///     .build()?;
-    /// ```
-    #[deprecated(since = "0.0.22", note = "Use with_model() with GeminiChatModel::new() instead")]
-    pub fn with_gemini_chat(self, config: GeminiConfig) -> anyhow::Result<Self> {
-        let model = Arc::new(GeminiChatModel::new(config)?);
-        Ok(self.with_model(model))
     }
 
     /// Add a tool to the agent
@@ -386,8 +327,11 @@ impl ConfigurableAgentBuilder {
             token_tracking_config,
         } = self;
 
-        let planner = planner
-            .ok_or_else(|| anyhow::anyhow!("model must be set (use with_model or with_*_chat)"))?;
+        let planner = planner.unwrap_or_else(|| {
+            // Use default model if no planner is set
+            let default_model = get_default_model().expect("Failed to get default model");
+            Arc::new(LlmBackedPlanner::new(default_model)) as Arc<dyn PlannerHandle>
+        });
 
         // Wrap the planner with token tracking if enabled
         let final_planner = if let Some(token_config) = token_tracking_config {

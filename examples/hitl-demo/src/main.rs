@@ -15,7 +15,7 @@ use agents_sdk::{
     hitl::{AgentInterrupt, HitlAction},
     persistence::InMemoryCheckpointer,
     state::AgentStateSnapshot,
-    tool, ConfigurableAgentBuilder, OpenAiConfig,
+    tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig,
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -67,11 +67,15 @@ async fn main() -> Result<()> {
     println!("   - Tool 'get_system_info': Auto-approved\n");
 
     // Create agent with HITL using ConfigurableAgentBuilder
+    let model = Arc::new(OpenAiChatModel::new(OpenAiConfig::new(
+        api_key,
+        "gpt-4o-mini",
+    ))?);
     let agent = ConfigurableAgentBuilder::new(
         "You are a helpful assistant. You have access to tools. \
          Use them when appropriate to help the user.",
     )
-    .with_openai_chat(OpenAiConfig::new(api_key, "gpt-4o-mini"))?
+    .with_model(model)
     .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))
     .with_tool(DeleteAllDataTool::as_tool())
     .with_tool(GetSystemInfoTool::as_tool())
