@@ -21,7 +21,7 @@
 use agents_core::agent::AgentHandle;
 use agents_core::persistence::InMemoryCheckpointer;
 use agents_core::state::AgentStateSnapshot;
-use agents_runtime::providers::OpenAiConfig;
+use agents_runtime::providers::{OpenAiConfig, OpenAiChatModel};
 use agents_runtime::ConfigurableAgentBuilder;
 use agents_macros::tool;
 use serde::{Deserialize, Serialize};
@@ -165,9 +165,12 @@ IMPORTANT: For search requests, you MUST use the internet_search tool to get cur
     // Create a checkpointer for state persistence
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
+    // Create the OpenAI model
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
+
     // Create the agent using the builder pattern with OpenAI
     let agent = ConfigurableAgentBuilder::new(instructions)
-        .with_openai_chat(openai_config)? // Use OpenAI instead of Anthropic
+        .with_model(model) // Use OpenAI model
         .with_tools(tools)
         .with_checkpointer(checkpointer) // Enable state persistence
         .build()?;

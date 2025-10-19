@@ -30,7 +30,7 @@ anyhow = "1.0"
 ### Basic Agent
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, get_default_model};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, OpenAiChatModel, get_default_model};
 use agents_macros::tool;
 use agents_core::state::AgentStateSnapshot;
 use std::sync::Arc;
@@ -49,9 +49,12 @@ async fn main() -> anyhow::Result<()> {
         "gpt-4o-mini"
     );
 
+    // Create the model
+    let model = Arc::new(OpenAiChatModel::new(config)?);
+
     // Build an agent with tools
     let agent = ConfigurableAgentBuilder::new("You are a helpful math assistant.")
-        .with_openai_chat(config)?
+        .with_model(model)
         .with_tool(AddTool::as_tool())
         .build()?;
 
@@ -74,21 +77,28 @@ async fn main() -> anyhow::Result<()> {
 The `ConfigurableAgentBuilder` provides a fluent interface for constructing agents:
 
 ```rust
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, AnthropicConfig, GeminiConfig};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, OpenAiChatModel, AnthropicConfig, AnthropicMessagesModel, GeminiConfig, GeminiChatModel};
+use std::sync::Arc;
 
 // OpenAI
+let config = OpenAiConfig::new(api_key, "gpt-4o-mini")?;
+let model = Arc::new(OpenAiChatModel::new(config)?);
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_openai_chat(OpenAiConfig::new(api_key, "gpt-4o-mini")?)
+    .with_model(model)
     .build()?;
 
 // Anthropic
+let config = AnthropicConfig::new(api_key, "claude-3-5-sonnet-20241022")?;
+let model = Arc::new(AnthropicMessagesModel::new(config)?);
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_anthropic_messages(AnthropicConfig::new(api_key, "claude-3-5-sonnet-20241022")?)
+    .with_model(model)
     .build()?;
 
 // Gemini
+let config = GeminiConfig::new(api_key, "gemini-2.0-flash-exp")?;
+let model = Arc::new(GeminiChatModel::new(config)?);
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_gemini_chat(GeminiConfig::new(api_key, "gemini-2.0-flash-exp")?)
+    .with_model(model)
     .build()?;
 ```
 
@@ -165,8 +175,9 @@ Monitor LLM usage and costs with built-in token tracking:
 use agents_sdk::{ConfigurableAgentBuilder, TokenTrackingConfig, TokenCosts};
 
 // Enable token tracking with default settings
+let model = Arc::new(OpenAiChatModel::new(config)?);
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_openai_chat(config)?
+    .with_model(model)
     .with_token_tracking(true)  // Enable with defaults
     .build()?;
 
@@ -178,8 +189,9 @@ let token_config = TokenTrackingConfig {
     custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
 };
 
+let model = Arc::new(OpenAiChatModel::new(config)?);
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_openai_chat(config)?
+    .with_model(model)
     .with_token_tracking_config(token_config)
     .build()?;
 ```

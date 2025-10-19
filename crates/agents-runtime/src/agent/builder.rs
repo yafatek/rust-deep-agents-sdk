@@ -73,18 +73,57 @@ impl ConfigurableAgentBuilder {
     }
 
     /// Convenience method for OpenAI models (equivalent to model=OpenAiChatModel)
+    /// 
+    /// # Deprecated
+    /// 
+    /// This method is deprecated. Use `with_model()` with `OpenAiChatModel::new(config)?` instead.
+    /// 
+    /// Example:
+    /// ```rust
+    /// let model = Arc::new(OpenAiChatModel::new(config)?);
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .build()?;
+    /// ```
+    #[deprecated(since = "0.0.22", note = "Use with_model() with OpenAiChatModel::new() instead")]
     pub fn with_openai_chat(self, config: OpenAiConfig) -> anyhow::Result<Self> {
         let model = Arc::new(OpenAiChatModel::new(config)?);
         Ok(self.with_model(model))
     }
 
-    /// Convenience method for Anthropic models (equivalent to model=AnthropicMessagesModel)  
+    /// Convenience method for Anthropic models (equivalent to model=AnthropicMessagesModel)
+    /// 
+    /// # Deprecated
+    /// 
+    /// This method is deprecated. Use `with_model()` with `AnthropicMessagesModel::new(config)?` instead.
+    /// 
+    /// Example:
+    /// ```rust
+    /// let model = Arc::new(AnthropicMessagesModel::new(config)?);
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .build()?;
+    /// ```
+    #[deprecated(since = "0.0.22", note = "Use with_model() with AnthropicMessagesModel::new() instead")]
     pub fn with_anthropic_messages(self, config: AnthropicConfig) -> anyhow::Result<Self> {
         let model = Arc::new(AnthropicMessagesModel::new(config)?);
         Ok(self.with_model(model))
     }
 
     /// Convenience method for Gemini models (equivalent to model=GeminiChatModel)
+    /// 
+    /// # Deprecated
+    /// 
+    /// This method is deprecated. Use `with_model()` with `GeminiChatModel::new(config)?` instead.
+    /// 
+    /// Example:
+    /// ```rust
+    /// let model = Arc::new(GeminiChatModel::new(config)?);
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .build()?;
+    /// ```
+    #[deprecated(since = "0.0.22", note = "Use with_model() with GeminiChatModel::new() instead")]
     pub fn with_gemini_chat(self, config: GeminiConfig) -> anyhow::Result<Self> {
         let model = Arc::new(GeminiChatModel::new(config)?);
         Ok(self.with_model(model))
