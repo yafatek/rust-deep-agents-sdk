@@ -6,7 +6,7 @@
 
 A high-performance Rust framework for building AI agents with custom tools, sub-agents, and persistent state management. Built for production use with enterprise-grade features like token tracking, cost monitoring, and human-in-the-loop workflows.
 
-## 🆕 What's New in v0.0.22
+## 🆕 What's New in v0.0.23
 
 - **Token Tracking**: Built-in LLM usage monitoring with cost estimation and performance metrics
 - **Enhanced Event System**: New `TokenUsage` events for real-time usage tracking
@@ -22,7 +22,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-agents-sdk = "0.0.22"
+agents-sdk = "0.0.23"
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 ```
@@ -430,7 +430,7 @@ The SDK supports feature flags for modular functionality:
 
 ```toml
 [dependencies]
-agents-sdk = { version = "0.0.22", features = ["aws", "redis"] }
+agents-sdk = { version = "0.0.23", features = ["aws", "redis"] }
 
 # Available features:
 # - "aws" - AWS integrations (DynamoDB, Secrets Manager)
