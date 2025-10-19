@@ -24,6 +24,7 @@ members = [
     "examples/react-loop-demo",
     "examples/event-system-demo",
     "examples/pii-sanitization-demo",
+    "examples/streaming-events-demo",
 ]
 resolver = "2"
 
