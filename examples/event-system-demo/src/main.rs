@@ -9,7 +9,7 @@
 use agents_core::events::{AgentEvent, EventBroadcaster};
 use agents_core::state::AgentStateSnapshot;
 use agents_macros::tool;
-use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
@@ -258,7 +258,10 @@ async fn main() -> anyhow::Result<()> {
          Use the add tool for addition. \
          For complex math, delegate to the math-expert sub-agent using the task tool.",
     )
-    .with_openai_chat(OpenAiConfig::new(api_key, "gpt-4o-mini"))?
+    .with_model(Arc::new(OpenAiChatModel::new(OpenAiConfig::new(
+        api_key,
+        "gpt-4o-mini",
+    ))?))
     .with_tool(AddTool::as_tool())
     .with_subagent_config(math_subagent)
     .with_event_broadcasters(vec![console_broadcaster, whatsapp_broadcaster])

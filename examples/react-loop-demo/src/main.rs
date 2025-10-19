@@ -4,7 +4,7 @@
 /// - Main orchestrator delegates to specialized sub-agents
 /// - Each sub-agent has its own tools and expertise  
 /// - Sub-agents use ReAct loop to complete tasks
-use agents_sdk::{tool, ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig};
+use agents_sdk::{tool, ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig};
 use std::sync::Arc;
 
 #[tool("Search for automotive services by keyword")]
@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
          3. Present the result\n\
          Use task() to delegate.",
     )
-    .with_openai_chat(openai_config)?
+    .with_model(Arc::new(OpenAiChatModel::new(openai_config)?))
     .with_subagent_config(vec![catalog_agent, quote_agent])
     .build()?;
 

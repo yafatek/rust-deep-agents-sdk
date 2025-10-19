@@ -7,7 +7,8 @@
 //! 4. Built-in Deep Agent system prompt
 
 use agents_sdk::{
-    persistence::InMemoryCheckpointer, tool, ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig,
+    persistence::InMemoryCheckpointer, tool, ConfigurableAgentBuilder, OpenAiChatModel,
+    OpenAiConfig, SubAgentConfig,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -82,7 +83,7 @@ async fn main() -> Result<()> {
     let agent = ConfigurableAgentBuilder::new(
         "You are a helpful assistant that can do math and research. Use your tools and sub-agents to help users."
     )
-    .with_openai_chat(openai_config)?
+    .with_model(Arc::new(OpenAiChatModel::new(openai_config)?))
     .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))
     .with_tool(AddNumbersTool::as_tool())
     .with_subagent_config(vec![calculator_subagent, research_subagent])

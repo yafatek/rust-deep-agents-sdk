@@ -14,7 +14,7 @@ use agents_sdk::{
         redact_pii, safe_preview, sanitize_json, sanitize_tool_payload, MAX_PREVIEW_LENGTH,
     },
     state::AgentStateSnapshot,
-    ConfigurableAgentBuilder, OpenAiConfig, SubAgentConfig,
+    ConfigurableAgentBuilder, OpenAiChatModel, OpenAiConfig, SubAgentConfig,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -152,7 +152,7 @@ async fn demo_with_sanitization() -> anyhow::Result<()> {
          When asked to register a customer or look up information, \
          delegate to the customer-agent sub-agent.",
     )
-    .with_openai_chat(config)?
+    .with_model(Arc::new(OpenAiChatModel::new(config)?))
     .with_subagent_config(vec![customer_subagent])
     .with_event_broadcaster(Arc::new(ConsoleEventLogger::new("SANITIZED")))
     .with_pii_sanitization(true) // Explicitly enabled (this is the default)
@@ -204,7 +204,7 @@ async fn demo_without_sanitization() -> anyhow::Result<()> {
          When asked to register a customer or look up information, \
          delegate to the customer-agent sub-agent.",
     )
-    .with_openai_chat(config)?
+    .with_model(Arc::new(OpenAiChatModel::new(config)?))
     .with_subagent_config(vec![customer_subagent])
     .with_event_broadcaster(Arc::new(ConsoleEventLogger::new("UNSANITIZED")))
     .with_pii_sanitization(false) // DISABLED - shows raw data
