@@ -19,6 +19,7 @@ pub enum AgentEvent {
     StateCheckpointed(StateCheckpointedEvent),
     PlanningComplete(PlanningCompleteEvent),
     TokenUsage(TokenUsageEvent),
+    StreamingToken(StreamingTokenEvent),
 }
 
 impl AgentEvent {
@@ -35,6 +36,7 @@ impl AgentEvent {
             AgentEvent::StateCheckpointed(_) => "state_checkpointed",
             AgentEvent::PlanningComplete(_) => "planning_complete",
             AgentEvent::TokenUsage(_) => "token_usage",
+            AgentEvent::StreamingToken(_) => "streaming_token",
         }
     }
 
@@ -51,6 +53,7 @@ impl AgentEvent {
             AgentEvent::StateCheckpointed(e) => &e.metadata,
             AgentEvent::PlanningComplete(e) => &e.metadata,
             AgentEvent::TokenUsage(e) => &e.metadata,
+            AgentEvent::StreamingToken(e) => &e.metadata,
         }
     }
 }
@@ -164,6 +167,13 @@ pub struct TokenUsageEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingTokenEvent {
+    pub metadata: EventMetadata,
+    pub agent_name: String,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenUsage {
     /// Number of input tokens
     pub input_tokens: u32,
@@ -216,6 +226,12 @@ pub trait EventBroadcaster: Send + Sync {
     fn should_broadcast(&self, _event: &AgentEvent) -> bool {
         true
     }
+
+    /// Indicates whether this broadcaster supports streaming token events.
+    /// Default is false for backward compatibility.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
 }
 
 pub struct EventDispatcher {
@@ -251,6 +267,13 @@ impl EventDispatcher {
         for broadcaster in broadcasters {
             let event_clone = event.clone();
             tokio::spawn(async move {
+                // Skip streaming tokens for broadcasters that don't support them
+                if matches!(event_clone, AgentEvent::StreamingToken(_))
+                    && !broadcaster.supports_streaming()
+                {
+                    return;
+                }
+
                 if broadcaster.should_broadcast(&event_clone) {
                     if let Err(e) = broadcaster.broadcast(&event_clone).await {
                         tracing::warn!(

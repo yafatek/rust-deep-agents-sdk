@@ -789,6 +789,7 @@ impl AgentHandle for DeepAgent {
     ) -> anyhow::Result<agents_core::agent::AgentStream> {
         use crate::planner::LlmBackedPlanner;
         use agents_core::llm::{LlmRequest, StreamChunk};
+        use futures::StreamExt;
 
         // Add input to history
         self.append_history(input.clone());
@@ -818,7 +819,73 @@ impl AgentHandle for DeepAgent {
             // We have an LlmBackedPlanner, use its model for streaming
             let model = llm_planner.model().clone();
             let stream = model.generate_stream(llm_request).await?;
-            Ok(stream)
+
+            // Wrap stream to emit events to broadcasters
+            let agent_name = self.descriptor.name.clone();
+            let event_dispatcher = self.event_dispatcher.clone();
+
+            let wrapped_stream = stream.then(move |chunk_result| {
+                let dispatcher = event_dispatcher.clone();
+                let name = agent_name.clone();
+
+                async move {
+                    match &chunk_result {
+                        Ok(StreamChunk::TextDelta(token)) => {
+                            // Emit streaming token event
+                            if let Some(ref dispatcher) = dispatcher {
+                                let event = agents_core::events::AgentEvent::StreamingToken(
+                                    agents_core::events::StreamingTokenEvent {
+                                        metadata: agents_core::events::EventMetadata::new(
+                                            "default".to_string(),
+                                            uuid::Uuid::new_v4().to_string(),
+                                            None,
+                                        ),
+                                        agent_name: name.clone(),
+                                        token: token.clone(),
+                                    },
+                                );
+                                dispatcher.dispatch(event).await;
+                            }
+                        }
+                        Ok(StreamChunk::Done { message }) => {
+                            // Emit agent completed event
+                            if let Some(ref dispatcher) = dispatcher {
+                                let full_text = match &message.content {
+                                    agents_core::messaging::MessageContent::Text(t) => t.clone(),
+                                    agents_core::messaging::MessageContent::Json(v) => {
+                                        v.to_string()
+                                    }
+                                };
+
+                                let preview = if full_text.len() > 100 {
+                                    format!("{}...", &full_text[..100])
+                                } else {
+                                    full_text.clone()
+                                };
+
+                                let event = agents_core::events::AgentEvent::AgentCompleted(
+                                    agents_core::events::AgentCompletedEvent {
+                                        metadata: agents_core::events::EventMetadata::new(
+                                            "default".to_string(),
+                                            uuid::Uuid::new_v4().to_string(),
+                                            None,
+                                        ),
+                                        agent_name: name.clone(),
+                                        duration_ms: 0, // Duration not tracked in streaming mode
+                                        response_preview: preview,
+                                        response: full_text,
+                                    },
+                                );
+                                dispatcher.dispatch(event).await;
+                            }
+                        }
+                        _ => {}
+                    }
+                    chunk_result
+                }
+            });
+
+            Ok(Box::pin(wrapped_stream))
         } else {
             // Fallback to non-streaming
             let response = self.handle_message_internal(input, _state).await?;
