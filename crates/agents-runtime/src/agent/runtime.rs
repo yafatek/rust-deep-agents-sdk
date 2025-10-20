@@ -487,9 +487,15 @@ impl DeepAgent {
     async fn handle_message_internal(
         &self,
         input: AgentMessage,
-        _state: Arc<AgentStateSnapshot>,
+        loaded_state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<AgentMessage> {
         let start_time = std::time::Instant::now();
+
+        // Initialize internal state with loaded state from checkpointer
+        // This ensures conversation context is maintained across sessions
+        if let Ok(mut state_guard) = self.state.write() {
+            *state_guard = (*loaded_state).clone();
+        }
 
         self.emit_event(agents_core::events::AgentEvent::AgentStarted(
             agents_core::events::AgentStartedEvent {
@@ -925,19 +931,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
     // Build sub-agents from configurations
     let mut registrations: Vec<SubAgentRegistration> = Vec::new();
 
-    // Build custom sub-agents from configs
-    tracing::info!(
-        "📋 Processing {} sub-agent configurations",
-        config.subagent_configs.len()
-    );
-
     for subagent_config in &config.subagent_configs {
-        tracing::info!(
-            "🏗️ Building sub-agent: {} ({})",
-            subagent_config.name,
-            subagent_config.description
-        );
-
         // Determine the planner for this sub-agent
         let sub_planner = if let Some(ref model) = subagent_config.model {
             // Sub-agent has its own model - wrap it in a planner
