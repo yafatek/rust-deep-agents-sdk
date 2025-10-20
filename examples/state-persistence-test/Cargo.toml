@@ -1,0 +1,15 @@
+[package]
+name = "state-persistence-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agents-core = { path = "../../crates/agents-core" }
+agents-runtime = { path = "../../crates/agents-runtime" }
+agents-persistence = { path = "../../crates/agents-persistence" }
+anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde_json = "1.0"
+dotenv = "0.15"

@@ -1,6 +1,6 @@
 [package]
 name = "agents-runtime"
-version = "0.0.24"
+version = "0.0.25"
 edition = "2021"
 description = "Async runtime orchestration for Rust deep agents."
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -13,8 +13,8 @@ categories = ["api-bindings", "development-tools"]
 readme = "../../README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core", version = "0.0.24" }
-agents-toolkit = { path = "../agents-toolkit", version = "0.0.24" }
+agents-core = { path = "../agents-core", version = "0.0.25" }
+agents-toolkit = { path = "../agents-toolkit", version = "0.0.25" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.25] - 2025-10-20
+
+### Fixed
+- **State Persistence**: Fixed critical bug where agent conversation context was not maintained across messages
+  - Agent runtime now properly initializes internal state with loaded state from checkpointer
+  - Previously, the `loaded_state` parameter in `handle_message_internal` was ignored
+  - This ensures conversation history and context are preserved across sessions when using Redis or other checkpointers
+  - Resolves issue where agents would "forget" previous conversation context after server restarts
+
+### Changed
+- **Agent Runtime**: Modified `handle_message_internal` to use loaded state from checkpointer instead of ignoring it
+- **State Management**: Agent internal state is now properly synchronized with checkpointer state on each message
+
 ## [0.0.24] - 2025-10-19
 
 ### Added
