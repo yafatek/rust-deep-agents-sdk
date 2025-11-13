@@ -33,6 +33,7 @@ async fn main() -> anyhow::Result<()> {
         api_key,
         model: "gemini-pro".to_string(),
         api_url: None,
+        custom_headers: Vec::new(),
     };
 
     let agent = ConfigurableAgentBuilder::new(

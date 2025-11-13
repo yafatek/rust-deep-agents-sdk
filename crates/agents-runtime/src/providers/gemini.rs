@@ -11,6 +11,23 @@ pub struct GeminiConfig {
     pub api_key: String,
     pub model: String,
     pub api_url: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl GeminiConfig {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            api_url: None,
+            custom_headers: Vec::new(),
+        }
+    }
+
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
+        self
+    }
 }
 
 pub struct GeminiChatModel {
@@ -177,13 +194,13 @@ impl LanguageModel for GeminiChatModel {
             base_url, self.config.model, self.config.api_key
         );
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?;
+        let mut request = self.client.post(&url);
+
+        for (key, value) in &self.config.custom_headers {
+            request = request.header(key, value);
+        }
+
+        let response = request.json(&body).send().await?.error_for_status()?;
 
         let data: GeminiResponse = response.json().await?;
 

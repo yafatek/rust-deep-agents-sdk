@@ -12,6 +12,7 @@ pub struct OpenAiConfig {
     pub api_key: String,
     pub model: String,
     pub api_url: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
 }
 
 impl OpenAiConfig {
@@ -20,11 +21,17 @@ impl OpenAiConfig {
             api_key: api_key.into(),
             model: model.into(),
             api_url: None,
+            custom_headers: Vec::new(),
         }
     }
 
     pub fn with_api_url(mut self, api_url: Option<String>) -> Self {
         self.api_url = api_url;
+        self
+    }
+
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
         self
     }
 }
@@ -212,13 +219,13 @@ impl LanguageModel for OpenAiChatModel {
             }
         }
 
-        let response = self
-            .client
-            .post(url)
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await?;
+        let mut request = self.client.post(url).bearer_auth(&self.config.api_key);
+
+        for (key, value) in &self.config.custom_headers {
+            request = request.header(key, value);
+        }
+
+        let response = request.json(&body).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -324,13 +331,13 @@ impl LanguageModel for OpenAiChatModel {
             request.tools.len()
         );
 
-        let response = self
-            .client
-            .post(url)
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await?;
+        let mut http_request = self.client.post(url).bearer_auth(&self.config.api_key);
+
+        for (key, value) in &self.config.custom_headers {
+            http_request = http_request.header(key, value);
+        }
+
+        let response = http_request.json(&body).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
