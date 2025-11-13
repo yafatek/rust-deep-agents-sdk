@@ -25,6 +25,7 @@ pub fn get_default_model() -> anyhow::Result<Arc<dyn LanguageModel>> {
             .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?,
         model: "gpt-4o-mini".to_string(),
         api_url: None,
+        custom_headers: Vec::new(),
     };
     let model: Arc<dyn LanguageModel> = Arc::new(OpenAiChatModel::new(config)?);
     Ok(model)

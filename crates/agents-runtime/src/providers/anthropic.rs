@@ -13,6 +13,29 @@ pub struct AnthropicConfig {
     pub max_output_tokens: u32,
     pub api_url: Option<String>,
     pub api_version: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl AnthropicConfig {
+    pub fn new(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        max_output_tokens: u32,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            max_output_tokens,
+            api_url: None,
+            api_version: None,
+            custom_headers: Vec::new(),
+        }
+    }
+
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
+        self
+    }
 }
 
 pub struct AnthropicMessagesModel {
@@ -181,15 +204,17 @@ impl LanguageModel for AnthropicMessagesModel {
             .unwrap_or("https://api.anthropic.com/v1/messages");
         let version = self.config.api_version.as_deref().unwrap_or("2023-06-01");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
             .header("x-api-key", &self.config.api_key)
-            .header("anthropic-version", version)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?;
+            .header("anthropic-version", version);
+
+        for (key, value) in &self.config.custom_headers {
+            request = request.header(key, value);
+        }
+
+        let response = request.json(&body).send().await?.error_for_status()?;
 
         let data: AnthropicResponse = response.json().await?;
 
