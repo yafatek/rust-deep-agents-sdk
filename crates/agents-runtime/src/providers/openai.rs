@@ -513,3 +513,32 @@ impl LanguageModel for OpenAiChatModel {
         Ok(Box::pin(stream_with_finale))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_config_new_initializes_empty_custom_headers() {
+        let config = OpenAiConfig::new("test-key", "gpt-4");
+        assert_eq!(config.api_key, "test-key");
+        assert_eq!(config.model, "gpt-4");
+        assert!(config.custom_headers.is_empty());
+        assert!(config.api_url.is_none());
+    }
+
+    #[test]
+    fn openai_config_with_custom_headers_sets_headers() {
+        let headers = vec![
+            ("X-Custom-Header".to_string(), "value1".to_string()),
+            ("X-Another-Header".to_string(), "value2".to_string()),
+        ];
+        let config = OpenAiConfig::new("test-key", "gpt-4").with_custom_headers(headers.clone());
+
+        assert_eq!(config.custom_headers.len(), 2);
+        assert_eq!(config.custom_headers[0].0, "X-Custom-Header");
+        assert_eq!(config.custom_headers[0].1, "value1");
+        assert_eq!(config.custom_headers[1].0, "X-Another-Header");
+        assert_eq!(config.custom_headers[1].1, "value2");
+    }
+}
