@@ -17,6 +17,7 @@ members = [
     # "examples/checkpointer-demo",  # TODO: Update to use #[tool] macro
     "examples/tool-test",
     "examples/anthropic-tools-test",
+    "examples/anthropic-custom-headers",
     "examples/gemini-tools-test",
     "examples/deep-agent-test",
     "examples/hitl-demo",
