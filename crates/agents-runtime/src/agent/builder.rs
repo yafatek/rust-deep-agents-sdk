@@ -18,6 +18,7 @@ use agents_core::llm::LanguageModel;
 use agents_core::persistence::Checkpointer;
 use agents_core::tools::ToolBox;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 /// Builder API to assemble a DeepAgent in a single fluent flow, mirroring the Python
@@ -36,7 +37,7 @@ pub struct ConfigurableAgentBuilder {
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     enable_pii_sanitization: bool,
     token_tracking_config: Option<TokenTrackingConfig>,
-    max_iterations: usize,
+    max_iterations: NonZeroUsize,
 }
 
 impl ConfigurableAgentBuilder {
@@ -55,7 +56,7 @@ impl ConfigurableAgentBuilder {
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
             token_tracking_config: None,
-            max_iterations: 10,
+            max_iterations: NonZeroUsize::new(10).unwrap(),
         }
     }
 
@@ -308,9 +309,15 @@ impl ConfigurableAgentBuilder {
     /// user requests, calling tools and reasoning about the results. This setting
     /// controls how many iterations the agent can perform before it stops.
     ///
+    /// **Note**: `max_iterations` must be greater than 0. Passing 0 will result in a panic.
+    ///
     /// # Default
     ///
     /// Defaults to 10 iterations if not specified.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `max_iterations` is 0.
     ///
     /// # Example
     ///
@@ -321,7 +328,8 @@ impl ConfigurableAgentBuilder {
     ///     .build()?;
     /// ```
     pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
-        self.max_iterations = max_iterations;
+        self.max_iterations =
+            NonZeroUsize::new(max_iterations).expect("max_iterations must be greater than 0");
         self
     }
 
@@ -386,7 +394,7 @@ impl ConfigurableAgentBuilder {
             .with_auto_general_purpose(auto_general_purpose)
             .with_prompt_caching(enable_prompt_caching)
             .with_pii_sanitization(enable_pii_sanitization)
-            .with_max_iterations(max_iterations);
+            .with_max_iterations(max_iterations.get());
 
         if let Some(ckpt) = checkpointer {
             cfg = cfg.with_checkpointer(ckpt);
@@ -421,25 +429,25 @@ mod tests {
     #[test]
     fn test_builder_default_max_iterations() {
         let builder = ConfigurableAgentBuilder::new("test instructions");
-        assert_eq!(builder.max_iterations, 10);
+        assert_eq!(builder.max_iterations.get(), 10);
     }
 
     #[test]
     fn test_builder_custom_max_iterations() {
         let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(20);
-        assert_eq!(builder.max_iterations, 20);
+        assert_eq!(builder.max_iterations.get(), 20);
     }
 
     #[test]
-    fn test_builder_zero_max_iterations() {
-        let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(0);
-        assert_eq!(builder.max_iterations, 0);
+    #[should_panic(expected = "max_iterations must be greater than 0")]
+    fn test_builder_zero_max_iterations_panics() {
+        let _builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(0);
     }
 
     #[test]
     fn test_builder_large_max_iterations() {
         let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(1000);
-        assert_eq!(builder.max_iterations, 1000);
+        assert_eq!(builder.max_iterations.get(), 1000);
     }
 
     #[test]
@@ -450,7 +458,7 @@ mod tests {
             .with_prompt_caching(true)
             .with_pii_sanitization(false);
 
-        assert_eq!(builder.max_iterations, 15);
+        assert_eq!(builder.max_iterations.get(), 15);
         assert_eq!(builder.auto_general_purpose, false);
         assert_eq!(builder.enable_prompt_caching, true);
         assert_eq!(builder.enable_pii_sanitization, false);

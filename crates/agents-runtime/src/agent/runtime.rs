@@ -22,6 +22,7 @@ use agents_core::tools::{ToolBox, ToolContext, ToolResult};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::{Arc, RwLock};
 
 // Built-in tool names exposed by middlewares. The `task` tool for subagents is not gated.
@@ -64,7 +65,7 @@ pub struct DeepAgent {
     checkpointer: Option<Arc<dyn Checkpointer>>,
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     enable_pii_sanitization: bool,
-    max_iterations: usize,
+    max_iterations: NonZeroUsize,
 }
 
 impl DeepAgent {
@@ -509,7 +510,7 @@ impl DeepAgent {
         self.append_history(input.clone());
 
         // ReAct loop: continue until LLM responds with text (not tool calls)
-        let max_iterations = self.max_iterations;
+        let max_iterations = self.max_iterations.get();
         let mut iteration = 0;
 
         loop {
@@ -946,7 +947,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         let mut sub_cfg = DeepAgentConfig::new(subagent_config.instructions.clone(), sub_planner);
 
         // Inherit max_iterations from parent
-        sub_cfg = sub_cfg.with_max_iterations(config.max_iterations);
+        sub_cfg = sub_cfg.with_max_iterations(config.max_iterations.get());
 
         // Configure tools
         if let Some(ref tools) = subagent_config.tools {
@@ -1003,7 +1004,7 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
                     .with_auto_general_purpose(false)
                     .with_prompt_caching(config.enable_prompt_caching)
                     .with_pii_sanitization(config.enable_pii_sanitization)
-                    .with_max_iterations(config.max_iterations);
+                    .with_max_iterations(config.max_iterations.get());
             if let Some(ref selected) = config.builtin_tools {
                 sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }

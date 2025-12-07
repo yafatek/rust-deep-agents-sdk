@@ -8,6 +8,7 @@ use agents_core::agent::PlannerHandle;
 use agents_core::persistence::Checkpointer;
 use agents_core::tools::ToolBox;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 /// Parameters for create_deep_agent() that mirror the Python API exactly
@@ -54,7 +55,7 @@ pub struct DeepAgentConfig {
     pub event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     pub enable_pii_sanitization: bool,
     pub token_tracking_config: Option<TokenTrackingConfig>,
-    pub max_iterations: usize,
+    pub max_iterations: NonZeroUsize,
 }
 
 impl DeepAgentConfig {
@@ -73,7 +74,7 @@ impl DeepAgentConfig {
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
             token_tracking_config: None,
-            max_iterations: 10,
+            max_iterations: NonZeroUsize::new(10).unwrap(),
         }
     }
 
@@ -183,9 +184,19 @@ impl DeepAgentConfig {
     }
 
     /// Set the maximum number of ReAct loop iterations before stopping.
+    ///
+    /// **Note**: `max_iterations` must be greater than 0. Passing 0 will result in a panic.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `max_iterations` is 0.
+    ///
+    /// # Default
+    ///
     /// Defaults to 10 if not specified.
     pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
-        self.max_iterations = max_iterations;
+        self.max_iterations =
+            NonZeroUsize::new(max_iterations).expect("max_iterations must be greater than 0");
         self
     }
 }
@@ -310,14 +321,14 @@ mod tests {
     fn test_config_default_max_iterations() {
         let planner = create_mock_planner();
         let config = DeepAgentConfig::new("test instructions", planner);
-        assert_eq!(config.max_iterations, 10);
+        assert_eq!(config.max_iterations.get(), 10);
     }
 
     #[test]
     fn test_config_custom_max_iterations() {
         let planner = create_mock_planner();
         let config = DeepAgentConfig::new("test instructions", planner).with_max_iterations(25);
-        assert_eq!(config.max_iterations, 25);
+        assert_eq!(config.max_iterations.get(), 25);
     }
 
     #[test]
@@ -329,7 +340,7 @@ mod tests {
             .with_prompt_caching(true)
             .with_pii_sanitization(false);
 
-        assert_eq!(config.max_iterations, 30);
+        assert_eq!(config.max_iterations.get(), 30);
         assert_eq!(config.auto_general_purpose, false);
         assert_eq!(config.enable_prompt_caching, true);
         assert_eq!(config.enable_pii_sanitization, false);
@@ -341,7 +352,14 @@ mod tests {
         let config = DeepAgentConfig::new("test instructions", planner).with_max_iterations(42);
 
         // Verify the value is actually stored
-        assert_eq!(config.max_iterations, 42);
+        assert_eq!(config.max_iterations.get(), 42);
+    }
+
+    #[test]
+    #[should_panic(expected = "max_iterations must be greater than 0")]
+    fn test_config_zero_max_iterations_panics() {
+        let planner = create_mock_planner();
+        let _config = DeepAgentConfig::new("test instructions", planner).with_max_iterations(0);
     }
 
     #[test]
@@ -351,19 +369,19 @@ mod tests {
         // Test that max_iterations works with various combinations
         let config =
             DeepAgentConfig::new("test instructions", planner.clone()).with_max_iterations(5);
-        assert_eq!(config.max_iterations, 5);
+        assert_eq!(config.max_iterations.get(), 5);
 
         let config2 = DeepAgentConfig::new("test instructions", planner.clone())
             .with_prompt_caching(true)
             .with_max_iterations(15);
-        assert_eq!(config2.max_iterations, 15);
+        assert_eq!(config2.max_iterations.get(), 15);
         assert_eq!(config2.enable_prompt_caching, true);
 
         let config3 = DeepAgentConfig::new("test instructions", planner)
             .with_auto_general_purpose(false)
             .with_max_iterations(100)
             .with_pii_sanitization(true);
-        assert_eq!(config3.max_iterations, 100);
+        assert_eq!(config3.max_iterations.get(), 100);
         assert_eq!(config3.auto_general_purpose, false);
         assert_eq!(config3.enable_pii_sanitization, true);
     }
