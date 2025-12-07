@@ -64,6 +64,7 @@ pub struct DeepAgent {
     checkpointer: Option<Arc<dyn Checkpointer>>,
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     enable_pii_sanitization: bool,
+    max_iterations: usize,
 }
 
 impl DeepAgent {
@@ -508,7 +509,7 @@ impl DeepAgent {
         self.append_history(input.clone());
 
         // ReAct loop: continue until LLM responds with text (not tool calls)
-        let max_iterations = 10;
+        let max_iterations = self.max_iterations;
         let mut iteration = 0;
 
         loop {
@@ -944,6 +945,9 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         // Create a DeepAgentConfig for this sub-agent
         let mut sub_cfg = DeepAgentConfig::new(subagent_config.instructions.clone(), sub_planner);
 
+        // Inherit max_iterations from parent
+        sub_cfg = sub_cfg.with_max_iterations(config.max_iterations);
+
         // Configure tools
         if let Some(ref tools) = subagent_config.tools {
             tracing::debug!(
@@ -998,7 +1002,8 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
                 DeepAgentConfig::new(config.instructions.clone(), config.planner.clone())
                     .with_auto_general_purpose(false)
                     .with_prompt_caching(config.enable_prompt_caching)
-                    .with_pii_sanitization(config.enable_pii_sanitization);
+                    .with_pii_sanitization(config.enable_pii_sanitization)
+                    .with_max_iterations(config.max_iterations);
             if let Some(ref selected) = config.builtin_tools {
                 sub_cfg = sub_cfg.with_builtin_tools(selected.iter().cloned());
             }
@@ -1087,5 +1092,6 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         checkpointer: config.checkpointer,
         event_dispatcher: config.event_dispatcher,
         enable_pii_sanitization: config.enable_pii_sanitization,
+        max_iterations: config.max_iterations,
     }
 }

@@ -36,6 +36,7 @@ pub struct ConfigurableAgentBuilder {
     event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     enable_pii_sanitization: bool,
     token_tracking_config: Option<TokenTrackingConfig>,
+    max_iterations: usize,
 }
 
 impl ConfigurableAgentBuilder {
@@ -54,6 +55,7 @@ impl ConfigurableAgentBuilder {
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
             token_tracking_config: None,
+            max_iterations: 10,
         }
     }
 
@@ -300,6 +302,29 @@ impl ConfigurableAgentBuilder {
         self
     }
 
+    /// Set the maximum number of ReAct loop iterations before stopping.
+    ///
+    /// The agent uses a ReAct loop (Reasoning and Acting) to iteratively process
+    /// user requests, calling tools and reasoning about the results. This setting
+    /// controls how many iterations the agent can perform before it stops.
+    ///
+    /// # Default
+    ///
+    /// Defaults to 10 iterations if not specified.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let agent = ConfigurableAgentBuilder::new("instructions")
+    ///     .with_model(model)
+    ///     .with_max_iterations(30)
+    ///     .build()?;
+    /// ```
+    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = max_iterations;
+        self
+    }
+
     pub fn build(self) -> anyhow::Result<DeepAgent> {
         self.finalize(create_deep_agent_from_config)
     }
@@ -325,6 +350,7 @@ impl ConfigurableAgentBuilder {
             event_dispatcher,
             enable_pii_sanitization,
             token_tracking_config,
+            max_iterations,
         } = self;
 
         let planner = planner.unwrap_or_else(|| {
@@ -359,7 +385,8 @@ impl ConfigurableAgentBuilder {
         let mut cfg = DeepAgentConfig::new(instructions, final_planner)
             .with_auto_general_purpose(auto_general_purpose)
             .with_prompt_caching(enable_prompt_caching)
-            .with_pii_sanitization(enable_pii_sanitization);
+            .with_pii_sanitization(enable_pii_sanitization)
+            .with_max_iterations(max_iterations);
 
         if let Some(ckpt) = checkpointer {
             cfg = cfg.with_checkpointer(ckpt);
@@ -384,5 +411,48 @@ impl ConfigurableAgentBuilder {
         }
 
         Ok(ctor(cfg))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_default_max_iterations() {
+        let builder = ConfigurableAgentBuilder::new("test instructions");
+        assert_eq!(builder.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_builder_custom_max_iterations() {
+        let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(20);
+        assert_eq!(builder.max_iterations, 20);
+    }
+
+    #[test]
+    fn test_builder_zero_max_iterations() {
+        let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(0);
+        assert_eq!(builder.max_iterations, 0);
+    }
+
+    #[test]
+    fn test_builder_large_max_iterations() {
+        let builder = ConfigurableAgentBuilder::new("test instructions").with_max_iterations(1000);
+        assert_eq!(builder.max_iterations, 1000);
+    }
+
+    #[test]
+    fn test_builder_chaining_with_max_iterations() {
+        let builder = ConfigurableAgentBuilder::new("test instructions")
+            .with_max_iterations(15)
+            .with_auto_general_purpose(false)
+            .with_prompt_caching(true)
+            .with_pii_sanitization(false);
+
+        assert_eq!(builder.max_iterations, 15);
+        assert_eq!(builder.auto_general_purpose, false);
+        assert_eq!(builder.enable_prompt_caching, true);
+        assert_eq!(builder.enable_pii_sanitization, false);
     }
 }
