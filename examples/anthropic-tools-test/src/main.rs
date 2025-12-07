@@ -31,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
         max_output_tokens: 1024,
         api_url: None,
         api_version: Some("2023-06-01".to_string()),
+        custom_headers: Vec::new(),
     };
 
     let agent = ConfigurableAgentBuilder::new(
