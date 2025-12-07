@@ -13,6 +13,29 @@ pub struct AnthropicConfig {
     pub max_output_tokens: u32,
     pub api_url: Option<String>,
     pub api_version: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl AnthropicConfig {
+    pub fn new(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        max_output_tokens: u32,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            max_output_tokens,
+            api_url: None,
+            api_version: None,
+            custom_headers: Vec::new(),
+        }
+    }
+
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
+        self
+    }
 }
 
 pub struct AnthropicMessagesModel {
@@ -181,15 +204,17 @@ impl LanguageModel for AnthropicMessagesModel {
             .unwrap_or("https://api.anthropic.com/v1/messages");
         let version = self.config.api_version.as_deref().unwrap_or("2023-06-01");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
             .header("x-api-key", &self.config.api_key)
-            .header("anthropic-version", version)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?;
+            .header("anthropic-version", version);
+
+        for (key, value) in &self.config.custom_headers {
+            request = request.header(key, value);
+        }
+
+        let response = request.json(&body).send().await?.error_for_status()?;
 
         let data: AnthropicResponse = response.json().await?;
 
@@ -261,5 +286,32 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content[0].text, "Hello");
+    }
+
+    #[test]
+    fn anthropic_config_new_initializes_empty_custom_headers() {
+        let config = AnthropicConfig::new("test-key", "claude-3", 1024);
+        assert_eq!(config.api_key, "test-key");
+        assert_eq!(config.model, "claude-3");
+        assert_eq!(config.max_output_tokens, 1024);
+        assert!(config.custom_headers.is_empty());
+        assert!(config.api_url.is_none());
+        assert!(config.api_version.is_none());
+    }
+
+    #[test]
+    fn anthropic_config_with_custom_headers_sets_headers() {
+        let headers = vec![
+            ("X-Custom-Header".to_string(), "value1".to_string()),
+            ("X-Another-Header".to_string(), "value2".to_string()),
+        ];
+        let config =
+            AnthropicConfig::new("test-key", "claude-3", 1024).with_custom_headers(headers.clone());
+
+        assert_eq!(config.custom_headers.len(), 2);
+        assert_eq!(config.custom_headers[0].0, "X-Custom-Header");
+        assert_eq!(config.custom_headers[0].1, "value1");
+        assert_eq!(config.custom_headers[1].0, "X-Another-Header");
+        assert_eq!(config.custom_headers[1].1, "value2");
     }
 }

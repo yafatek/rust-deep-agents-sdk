@@ -321,6 +321,7 @@ fn create_automotive_agent(
             .expect("OPENAI_API_KEY environment variable is required"),
         model: "gpt-4o-mini".to_string(),
         api_url: None,
+        custom_headers: Vec::new(),
     };
     let model = Arc::new(OpenAiChatModel::new(openai_config)?);
 

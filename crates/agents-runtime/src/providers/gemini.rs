@@ -11,6 +11,23 @@ pub struct GeminiConfig {
     pub api_key: String,
     pub model: String,
     pub api_url: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl GeminiConfig {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+            api_url: None,
+            custom_headers: Vec::new(),
+        }
+    }
+
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
+        self
+    }
 }
 
 pub struct GeminiChatModel {
@@ -177,13 +194,13 @@ impl LanguageModel for GeminiChatModel {
             base_url, self.config.model, self.config.api_key
         );
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?;
+        let mut request = self.client.post(&url);
+
+        for (key, value) in &self.config.custom_headers {
+            request = request.header(key, value);
+        }
+
+        let response = request.json(&body).send().await?.error_for_status()?;
 
         let data: GeminiResponse = response.json().await?;
 
@@ -262,5 +279,30 @@ mod tests {
         assert_eq!(contents[0].role, "user");
         assert!(system.is_some());
         assert_eq!(system.unwrap().parts[0].text, "You are concise");
+    }
+
+    #[test]
+    fn gemini_config_new_initializes_empty_custom_headers() {
+        let config = GeminiConfig::new("test-key", "gemini-pro");
+        assert_eq!(config.api_key, "test-key");
+        assert_eq!(config.model, "gemini-pro");
+        assert!(config.custom_headers.is_empty());
+        assert!(config.api_url.is_none());
+    }
+
+    #[test]
+    fn gemini_config_with_custom_headers_sets_headers() {
+        let headers = vec![
+            ("X-Custom-Header".to_string(), "value1".to_string()),
+            ("X-Another-Header".to_string(), "value2".to_string()),
+        ];
+        let config =
+            GeminiConfig::new("test-key", "gemini-pro").with_custom_headers(headers.clone());
+
+        assert_eq!(config.custom_headers.len(), 2);
+        assert_eq!(config.custom_headers[0].0, "X-Custom-Header");
+        assert_eq!(config.custom_headers[0].1, "value1");
+        assert_eq!(config.custom_headers[1].0, "X-Another-Header");
+        assert_eq!(config.custom_headers[1].1, "value2");
     }
 }
