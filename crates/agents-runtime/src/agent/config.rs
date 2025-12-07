@@ -54,6 +54,7 @@ pub struct DeepAgentConfig {
     pub event_dispatcher: Option<Arc<agents_core::events::EventDispatcher>>,
     pub enable_pii_sanitization: bool,
     pub token_tracking_config: Option<TokenTrackingConfig>,
+    pub max_iterations: usize,
 }
 
 impl DeepAgentConfig {
@@ -72,6 +73,7 @@ impl DeepAgentConfig {
             event_dispatcher: None,
             enable_pii_sanitization: true, // Enabled by default for security
             token_tracking_config: None,
+            max_iterations: 10,
         }
     }
 
@@ -179,6 +181,13 @@ impl DeepAgentConfig {
         self.token_tracking_config = Some(config);
         self
     }
+
+    /// Set the maximum number of ReAct loop iterations before stopping.
+    /// Defaults to 10 if not specified.
+    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = max_iterations;
+        self
+    }
 }
 
 /// Configuration for creating and registering a subagent using a simple, Python-like shape.
@@ -269,4 +278,93 @@ impl IntoIterator for SubAgentConfig {
 pub struct SummarizationConfig {
     pub messages_to_keep: usize,
     pub summary_note: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::planner::LlmBackedPlanner;
+    use std::sync::Arc;
+
+    // Mock planner for testing
+    fn create_mock_planner() -> Arc<dyn PlannerHandle> {
+        // This is a simplified mock - in real tests you'd use a proper mock
+        // For now, we'll just test the config builder API
+        use crate::providers::{OpenAiChatModel, OpenAiConfig};
+        use agents_core::llm::LanguageModel;
+
+        // Create a dummy config - tests won't actually call the LLM
+        let config = OpenAiConfig {
+            api_key: "test-key".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            api_url: None,
+            custom_headers: Vec::new(),
+        };
+
+        let model: Arc<dyn LanguageModel> =
+            Arc::new(OpenAiChatModel::new(config).expect("Failed to create test model"));
+        Arc::new(LlmBackedPlanner::new(model))
+    }
+
+    #[test]
+    fn test_config_default_max_iterations() {
+        let planner = create_mock_planner();
+        let config = DeepAgentConfig::new("test instructions", planner);
+        assert_eq!(config.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_config_custom_max_iterations() {
+        let planner = create_mock_planner();
+        let config = DeepAgentConfig::new("test instructions", planner).with_max_iterations(25);
+        assert_eq!(config.max_iterations, 25);
+    }
+
+    #[test]
+    fn test_config_chaining_with_max_iterations() {
+        let planner = create_mock_planner();
+        let config = DeepAgentConfig::new("test instructions", planner)
+            .with_max_iterations(30)
+            .with_auto_general_purpose(false)
+            .with_prompt_caching(true)
+            .with_pii_sanitization(false);
+
+        assert_eq!(config.max_iterations, 30);
+        assert_eq!(config.auto_general_purpose, false);
+        assert_eq!(config.enable_prompt_caching, true);
+        assert_eq!(config.enable_pii_sanitization, false);
+    }
+
+    #[test]
+    fn test_config_max_iterations_persists() {
+        let planner = create_mock_planner();
+        let config = DeepAgentConfig::new("test instructions", planner).with_max_iterations(42);
+
+        // Verify the value is actually stored
+        assert_eq!(config.max_iterations, 42);
+    }
+
+    #[test]
+    fn test_config_max_iterations_with_other_options() {
+        let planner = create_mock_planner();
+
+        // Test that max_iterations works with various combinations
+        let config =
+            DeepAgentConfig::new("test instructions", planner.clone()).with_max_iterations(5);
+        assert_eq!(config.max_iterations, 5);
+
+        let config2 = DeepAgentConfig::new("test instructions", planner.clone())
+            .with_prompt_caching(true)
+            .with_max_iterations(15);
+        assert_eq!(config2.max_iterations, 15);
+        assert_eq!(config2.enable_prompt_caching, true);
+
+        let config3 = DeepAgentConfig::new("test instructions", planner)
+            .with_auto_general_purpose(false)
+            .with_max_iterations(100)
+            .with_pii_sanitization(true);
+        assert_eq!(config3.max_iterations, 100);
+        assert_eq!(config3.auto_general_purpose, false);
+        assert_eq!(config3.enable_pii_sanitization, true);
+    }
 }
