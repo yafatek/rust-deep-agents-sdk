@@ -30,12 +30,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Define custom headers for the API requests.
     // These headers will be included in every request to the Anthropic API.
-    let custom_headers = vec![
-        (
-            "Ocp-Apim-Subscription-Key".to_string(),
-            "a-dummy-value-for-custom-header".to_string(),
-        )
-    ];
+    let custom_headers = vec![(
+        "Ocp-Apim-Subscription-Key".to_string(),
+        "a-dummy-value-for-custom-header".to_string(),
+    )];
 
     let custom_url = "https://your-instance.website.com/Anthropic/v1/messages".to_string();
 
@@ -51,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
         max_output_tokens: 1024,
         api_url: Some(custom_url),
         api_version: Some("2023-06-01".to_string()),
-        custom_headers
+        custom_headers,
     };
 
     let model = AnthropicMessagesModel::new(config)?;
