@@ -787,7 +787,21 @@ impl AgentHandle for DeepAgent {
         input: AgentMessage,
         _state: Arc<AgentStateSnapshot>,
     ) -> anyhow::Result<AgentMessage> {
-        self.handle_message_internal(input, _state).await
+        let response = self.handle_message_internal(input, _state).await?;
+
+        // Persist state to checkpointer after successful message handling
+        if let Some(checkpointer) = &self.checkpointer {
+            let state_clone = self
+                .state
+                .read()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on state"))?
+                .clone();
+            checkpointer
+                .save_state(&ThreadId::default(), &state_clone)
+                .await?;
+        }
+
+        Ok(response)
     }
 
     async fn handle_message_stream(
