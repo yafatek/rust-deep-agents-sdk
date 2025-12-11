@@ -1,6 +1,6 @@
 [package]
 name = "agents-toolkit"
-version = "0.0.25"
+version = "0.0.26"
 edition = "2021"
 description = "Reusable tools and utilities for Rust deep agents."
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -13,7 +13,7 @@ categories = ["api-bindings", "development-tools"]
 readme = "../../README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core", version = "0.0.25" }
+agents-core = { path = "../agents-core", version = "0.0.26" }
 agents-macros = { path = "../agents-macros", version = "0.1.0" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
