@@ -141,6 +141,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "anthropic-custom-headers"
+version = "0.1.0"
+dependencies = [
+ "agents-core",
+ "agents-sdk",
+ "anyhow",
+ "dotenv",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "anthropic-tools-test"
 version = "0.1.0"
 dependencies = [

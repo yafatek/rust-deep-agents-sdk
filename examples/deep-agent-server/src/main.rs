@@ -34,12 +34,16 @@ use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use uuid::Uuid;
 
-use agents_core::persistence::InMemoryCheckpointer;
-use agents_core::state::AgentStateSnapshot;
-use agents_runtime::agent::SubAgentConfig;
-use agents_runtime::providers::OpenAiConfig;
-use agents_runtime::ConfigurableAgentBuilder;
-use agents_macros::tool;
+use agents_sdk::{
+    persistence::{Checkpointer, InMemoryCheckpointer, ThreadId},
+    state::TodoStatus,
+    tool,
+    ConfigurableAgentBuilder,
+    DeepAgent,
+    OpenAiChatModel,
+    OpenAiConfig,
+    SubAgentConfig,
+};
 
 #[derive(Parser)]
 #[command(name = "deep-agent-server")]
@@ -118,8 +122,7 @@ struct AgentStatus {
 struct TodoItem {
     id: String,
     content: String,
-    status: String,   // "pending", "in_progress", "completed"
-    priority: String, // "high", "medium", "low"
+    status: String, // "pending", "in_progress", "completed"
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,8 +142,14 @@ struct ErrorResponse {
 
 // Application State
 #[derive(Clone)]
+struct AgentInstance {
+    agent: Arc<DeepAgent>,
+    checkpointer: Arc<dyn Checkpointer>,
+}
+
+#[derive(Clone)]
 struct AppState {
-    agents: HashMap<String, Arc<dyn agents_core::agent::AgentHandle>>,
+    agents: HashMap<String, AgentInstance>,
     sessions: Arc<RwLock<HashMap<String, SessionInfo>>>,
     agent_status: Arc<RwLock<HashMap<String, AgentStatus>>>,
     start_time: DateTime<Utc>,
@@ -216,6 +225,14 @@ async fn call_tavily_search(query: &str, max_results: Option<u32>) -> anyhow::Re
     Ok(formatted_results)
 }
 
+fn map_todo_status(status: &TodoStatus) -> &'static str {
+    match status {
+        TodoStatus::Pending => "pending",
+        TodoStatus::InProgress => "in_progress",
+        TodoStatus::Completed => "completed",
+    }
+}
+
 // API Handlers
 async fn chat_handler(
     State(state): State<AppState>,
@@ -224,7 +241,10 @@ async fn chat_handler(
     let session_id = request
         .session_id
         .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let agent_type = request.agent_type.as_deref().unwrap_or("research");
+    let agent_type = request
+        .agent_type
+        .clone()
+        .unwrap_or_else(|| "research".to_string());
 
     // Get or create session
     {
@@ -236,7 +256,7 @@ async fn chat_handler(
                 created_at: Utc::now(),
                 last_activity: Utc::now(),
                 message_count: 0,
-                agent_type: agent_type.to_string(),
+                agent_type: agent_type.clone(),
             });
 
         if let Some(session) = sessions.get_mut(&session_id) {
@@ -246,7 +266,7 @@ async fn chat_handler(
     }
 
     // Get the appropriate agent
-    let agent = state.agents.get(agent_type).ok_or_else(|| {
+    let agent_entry = state.agents.get(&agent_type).cloned().ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -257,6 +277,22 @@ async fn chat_handler(
         )
     })?;
 
+    let loaded_state = agent_entry
+        .checkpointer
+        .load_state(&session_id)
+        .await
+        .map_err(|err| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Failed to load agent state: {}", err),
+                    code: "STATE_LOAD_ERROR".to_string(),
+                    timestamp: Utc::now(),
+                }),
+            )
+        })?
+        .unwrap_or_default();
+
     // Update agent status to "thinking"
     {
         let mut status_map = state.agent_status.write().await;
@@ -266,7 +302,16 @@ async fn chat_handler(
                 session_id: session_id.clone(),
                 current_task: Some(request.message.clone()),
                 status: "thinking".to_string(),
-                todos: vec![], // TODO: Extract from agent state
+                todos: loaded_state
+                    .todos
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, todo)| TodoItem {
+                        id: format!("todo-{}", idx),
+                        content: todo.content.clone(),
+                        status: map_todo_status(&todo.status).to_string(),
+                    })
+                    .collect(),
                 recent_actions: vec![AgentAction {
                     timestamp: Utc::now(),
                     action_type: "user_message".to_string(),
@@ -278,23 +323,54 @@ async fn chat_handler(
         );
     }
 
-    // Process the message
-    let user_message = agents_core::messaging::AgentMessage {
-        role: agents_core::messaging::MessageRole::User,
-        content: agents_core::messaging::MessageContent::Text(request.message.clone()),
-        metadata: None,
-    };
+    let state_snapshot = Arc::new(loaded_state);
+    let thread_id: ThreadId = session_id.clone();
 
-    match agent
-        .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
+    // Process the message
+    match agent_entry
+        .agent
+        .handle_message(&request.message, state_snapshot)
         .await
     {
         Ok(response) => {
+            if let Err(err) = agent_entry.agent.save_state(&thread_id).await {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("Failed to persist agent state: {}", err),
+                        code: "STATE_SAVE_ERROR".to_string(),
+                        timestamp: Utc::now(),
+                    }),
+                ));
+            }
+
+            let updated_state = agent_entry
+                .checkpointer
+                .load_state(&thread_id)
+                .await
+                .map_err(|err| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: format!("Failed to refresh agent state: {}", err),
+                            code: "STATE_LOAD_ERROR".to_string(),
+                            timestamp: Utc::now(),
+                        }),
+                    )
+                })?
+                .unwrap_or_default();
+
             let response_text = response
                 .content
                 .as_text()
                 .unwrap_or("No response")
                 .to_string();
+
+            let files_created = if updated_state.files.is_empty() {
+                None
+            } else {
+                Some(updated_state.files.keys().cloned().collect())
+            };
 
             // Update agent status to "idle"
             {
@@ -302,6 +378,17 @@ async fn chat_handler(
                 if let Some(status) = status_map.get_mut(&session_id) {
                     status.status = "idle".to_string();
                     status.current_task = None;
+                    status.active_subagent = None;
+                    status.todos = updated_state
+                        .todos
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, todo)| TodoItem {
+                            id: format!("todo-{}", idx),
+                            content: todo.content.clone(),
+                            status: map_todo_status(&todo.status).to_string(),
+                        })
+                        .collect();
                     status.recent_actions.push(AgentAction {
                         timestamp: Utc::now(),
                         action_type: "response".to_string(),
@@ -315,7 +402,7 @@ async fn chat_handler(
                 response: response_text,
                 session_id,
                 timestamp: Utc::now(),
-                files_created: None, // TODO: Track file operations
+                files_created,
                 tools_used: None,    // TODO: Track tool usage
             }))
         }
@@ -432,92 +519,75 @@ async fn list_agent_status_handler(State(state): State<AppState>) -> Json<Vec<Ag
     Json(status_map.values().cloned().collect())
 }
 
-async fn create_research_agent() -> anyhow::Result<Arc<dyn agents_core::agent::AgentHandle>> {
-    // Create internet search tool
-    let internet_search = create_tool(
-        "internet_search",
-        "Search the internet for information using Tavily API",
-        |args: serde_json::Value| async move {
-            let query = args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("default query");
+async fn create_research_agent() -> anyhow::Result<AgentInstance> {
+    #[tool("Search the internet for fresh, factual information using the Tavily API")]
+    async fn internet_search(query: String, max_results: Option<u32>) -> String {
+        match call_tavily_search(&query, max_results).await {
+            Ok(results) => results,
+            Err(err) => format!(
+                "❌ Search failed: {}. Ensure TAVILY_API_KEY is configured correctly.",
+                err
+            ),
+        }
+    }
 
-            let max_results = args
-                .get("max_results")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as u32)
-                .unwrap_or(5);
-
-            match call_tavily_search(query, Some(max_results)).await {
-                Ok(results) => Ok(results),
-                Err(e) => Ok(format!("❌ Search failed: {}", e)),
-            }
-        },
-    );
+    let internet_search = InternetSearchTool::as_tool();
 
     // Create specialized subagents
     let research_subagent = SubAgentConfig::new(
         "research-agent",
-        "Researcher with internet search",
-        r#"You are a researcher. For any research task, first search the internet then provide a detailed answer.
+        "Research specialist that conducts deep investigations with web search support.",
+        r#"You are a dedicated researcher. Your job is to investigate a single topic thoroughly.
 
-To search: {"tool_calls": [{"name": "internet_search", "args": {"query": "search terms", "max_results": 5}}]}
-
-Always search first, then provide comprehensive answers based on the results."#
+Workflow:
+1. Use the internet_search tool whenever you need current or factual information.
+2. Synthesize findings into structured insights with citations and context.
+3. Return a comprehensive narrative answer – this will be shared directly with the user."#,
     )
     .with_tools(vec![internet_search.clone()]);
 
     let critique_subagent = SubAgentConfig::new(
         "critique-agent",
-        "Expert editor for critiquing and improving content",
-        r#"You are a dedicated editor. Provide detailed feedback on content quality.
+        "Expert editor that reviews research outputs to improve clarity and depth.",
+        r#"You are an editorial specialist. Review draft reports and provide detailed, actionable feedback.
 
-Check for: structure, comprehensiveness, clarity, accuracy, and proper citations.
+Checklist:
+- Assess structure and section flow.
+- Highlight missing context or weak analysis.
+- Suggest improvements to clarity, depth, and sourcing.
 
-If you need additional information for better critique, use internet_search:
-```json
-{"tool_calls": [{"name": "internet_search", "args": {"query": "your query", "max_results": 3}}]}
-```
-
-Provide actionable feedback to improve content quality."#,
+When additional facts are required, use the internet_search tool."#,
     )
     .with_tools(vec![internet_search.clone()]);
 
-    // Main agent instructions - very explicit
-    let main_instructions = r#"You MUST respond with JSON tool calls only. Never give text responses.
+    let main_instructions = r#"You are an orchestrator for a production research agent.
 
-For research: {"tool_calls": [{"name": "task", "args": {"description": "research TOPIC", "subagent_type": "research-agent"}}]}
-For other: {"tool_calls": []}
+Responsibilities:
+- Understand the user's objectives and keep the conversation on track.
+- Break complex work into focused tasks and delegate them with the `task` tool.
+- Use the `internet_search` tool whenever fresh knowledge is required.
+- Call the `research-agent` for deep dives and the `critique-agent` to review drafts.
+- Respond to the user in polished, natural language (do not expose raw tool JSON)."#;
 
-Examples:
-"Research AI" -> {"tool_calls": [{"name": "task", "args": {"description": "research AI", "subagent_type": "research-agent"}}]}
-"Hello" -> {"tool_calls": []}"#;
-
-    // Create OpenAI configuration
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?;
-
-    println!(
-        "🔑 Using OpenAI API key: {}...{}",
-        &api_key[..std::cmp::min(8, api_key.len())],
-        &api_key[api_key.len().saturating_sub(4)..]
-    );
-
     let openai_config = OpenAiConfig::new(api_key, "gpt-4o-mini");
+    let model = Arc::new(OpenAiChatModel::new(openai_config)?);
 
-    // Create checkpointer
-    let checkpointer = Arc::new(InMemoryCheckpointer::new());
+    let checkpointer: Arc<dyn Checkpointer> = Arc::new(InMemoryCheckpointer::new());
 
-    // Build the agent
     let agent = ConfigurableAgentBuilder::new(main_instructions)
-        .with_openai_chat(openai_config)?
-        .with_builtin_tools(["ls", "read_file", "write_file", "edit_file", "write_todos"]) // Add filesystem tools
-        .with_subagent_config([research_subagent, critique_subagent]) // Subagents have internet_search
-        .with_checkpointer(checkpointer)
+        .with_model(model)
+        .with_builtin_tools(["ls", "read_file", "write_file", "edit_file", "write_todos"])
+        .with_tools(vec![internet_search.clone()])
+        .with_subagent_config(vec![research_subagent, critique_subagent])
+        .with_checkpointer(checkpointer.clone())
         .build()?;
 
-    Ok(Arc::new(agent))
+    Ok(AgentInstance {
+        agent: Arc::new(agent),
+        checkpointer,
+    })
 }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -535,7 +605,7 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     println!("🚀 Deep Agent HTTP Server");
     println!("========================");

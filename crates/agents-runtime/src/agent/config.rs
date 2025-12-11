@@ -341,9 +341,9 @@ mod tests {
             .with_pii_sanitization(false);
 
         assert_eq!(config.max_iterations.get(), 30);
-        assert_eq!(config.auto_general_purpose, false);
-        assert_eq!(config.enable_prompt_caching, true);
-        assert_eq!(config.enable_pii_sanitization, false);
+        assert!(!config.auto_general_purpose);
+        assert!(config.enable_prompt_caching);
+        assert!(!config.enable_pii_sanitization);
     }
 
     #[test]
@@ -375,14 +375,14 @@ mod tests {
             .with_prompt_caching(true)
             .with_max_iterations(15);
         assert_eq!(config2.max_iterations.get(), 15);
-        assert_eq!(config2.enable_prompt_caching, true);
+        assert!(config2.enable_prompt_caching);
 
         let config3 = DeepAgentConfig::new("test instructions", planner)
             .with_auto_general_purpose(false)
             .with_max_iterations(100)
             .with_pii_sanitization(true);
         assert_eq!(config3.max_iterations.get(), 100);
-        assert_eq!(config3.auto_general_purpose, false);
-        assert_eq!(config3.enable_pii_sanitization, true);
+        assert!(!config3.auto_general_purpose);
+        assert!(config3.enable_pii_sanitization);
     }
 }

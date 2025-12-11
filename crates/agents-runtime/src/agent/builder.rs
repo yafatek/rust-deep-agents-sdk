@@ -459,8 +459,8 @@ mod tests {
             .with_pii_sanitization(false);
 
         assert_eq!(builder.max_iterations.get(), 15);
-        assert_eq!(builder.auto_general_purpose, false);
-        assert_eq!(builder.enable_prompt_caching, true);
-        assert_eq!(builder.enable_pii_sanitization, false);
+        assert!(!builder.auto_general_purpose);
+        assert!(builder.enable_prompt_caching);
+        assert!(!builder.enable_pii_sanitization);
     }
 }
