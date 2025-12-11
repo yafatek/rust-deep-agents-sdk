@@ -6,14 +6,14 @@
 
 A high-performance Rust framework for building AI agents with custom tools, sub-agents, and persistent state management. Built for production use with enterprise-grade features like token tracking, cost monitoring, and human-in-the-loop workflows.
 
-## 🆕 What's New in v0.0.24
+## 🆕 What's New in v0.0.27
 
+- **State Persistence Fix**: Fixed critical bug where agent conversation context was not maintained across messages
+- **Clippy Compliance**: All clippy warnings resolved for clean builds
 - **Streaming Events**: Real-time token-by-token event broadcasting for streaming responses
-- **StreamingToken Events**: New `AgentEvent::StreamingToken` variant for live updates
+- **StreamingToken Events**: `AgentEvent::StreamingToken` variant for live updates
 - **Opt-in Streaming**: Broadcasters can enable streaming via `supports_streaming()` method
-- **Backward Compatible**: Existing broadcasters work unchanged (streaming disabled by default)
 - **Enhanced Streaming**: `handle_message_stream()` now emits events for SSE/WebSocket integrations
-- **Example**: New `streaming-events-demo` showing real-time token broadcasting
 
 ## Quick Start
 
@@ -23,7 +23,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-agents-sdk = "0.0.24"
+agents-sdk = "0.0.27"
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 ```
@@ -431,7 +431,7 @@ The SDK supports feature flags for modular functionality:
 
 ```toml
 [dependencies]
-agents-sdk = { version = "0.0.23", features = ["aws", "redis"] }
+agents-sdk = { version = "0.0.27", features = ["aws", "redis"] }
 
 # Available features:
 # - "aws" - AWS integrations (DynamoDB, Secrets Manager)

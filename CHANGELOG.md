@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.27] - 2025-12-11
+
+### Fixed
+- **Clippy Compliance**: Resolved all clippy warnings
+  - Changed `assert_eq!(x, false)` to `assert!(!x)` in test code
+  - Changed `assert_eq!(x, true)` to `assert!(x)` in test code
+  - Cleaner, more idiomatic Rust code
+
+### Changed
+- Version bump to align all crates at 0.0.27
+
+## [0.0.26] - 2025-12-11
+
+### Changed
+- Version bump (skipped due to crates.io conflict with agents-macros)
+
 ## [0.0.25] - 2025-10-20
 
 ### Fixed
