@@ -594,8 +594,9 @@ impl DeepAgent {
                     // This is needed for OpenAI's API which expects:
                     // 1. Assistant message with tool call
                     // 2. Tool message with result
+                    // Using System role to avoid LLM echoing this back as a response
                     let tool_call_message = AgentMessage {
-                        role: MessageRole::Agent,
+                        role: MessageRole::System,
                         content: MessageContent::Text(format!(
                             "Calling tool: {} with args: {}",
                             tool_name,
