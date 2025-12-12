@@ -636,7 +636,7 @@ impl Tool for TaskRouterTool {
             };
 
             let response = agent
-                .handle_message(user_message, Arc::new(AgentStateSnapshot::default()))
+                .handle_message(user_message, ctx.state.clone())
                 .await?;
 
             // Calculate duration
