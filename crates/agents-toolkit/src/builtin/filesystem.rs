@@ -104,8 +104,12 @@ impl Tool for ReadFileTool {
         for (idx, line) in lines[args.offset..end].iter().enumerate() {
             let line_number = args.offset + idx + 1;
             let mut content = line.to_string();
-            if content.len() > 2000 {
-                content.truncate(2000);
+            if content.len() > args.limit {
+                let mut truncate_at = args.limit;
+                while !content.is_char_boundary(truncate_at) {
+                    truncate_at -= 1;
+                }
+                content.truncate(truncate_at);
             }
             formatted.push_str(&format!("{:6}\t{}\n", line_number, content));
         }
