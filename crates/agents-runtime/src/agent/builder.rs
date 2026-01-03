@@ -25,6 +25,7 @@ use std::sync::Arc;
 /// `create_configurable_agent` experience. Prefer this for ergonomic construction.
 pub struct ConfigurableAgentBuilder {
     instructions: String,
+    custom_system_prompt: Option<String>,
     planner: Option<Arc<dyn PlannerHandle>>,
     tools: Vec<ToolBox>,
     subagents: Vec<SubAgentConfig>,
@@ -44,6 +45,7 @@ impl ConfigurableAgentBuilder {
     pub fn new(instructions: impl Into<String>) -> Self {
         Self {
             instructions: instructions.into(),
+            custom_system_prompt: None,
             planner: None,
             tools: Vec::new(),
             subagents: Vec::new(),
@@ -70,6 +72,39 @@ impl ConfigurableAgentBuilder {
     /// Low-level planner API (for advanced use cases)
     pub fn with_planner(mut self, planner: Arc<dyn PlannerHandle>) -> Self {
         self.planner = Some(planner);
+        self
+    }
+
+    /// Override the entire system prompt with a custom one.
+    ///
+    /// By default, the agent uses a comprehensive Deep Agent system prompt that includes
+    /// tool usage rules, workflow guidance, and examples. This method allows you to
+    /// completely replace that prompt with your own.
+    ///
+    /// **Note**: When you override the system prompt, the `instructions` passed to `new()`
+    /// will be ignored. Use this for full control over the agent's behavior.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let agent = ConfigurableAgentBuilder::new("ignored when using with_system_prompt")
+    ///     .with_model(model)
+    ///     .with_system_prompt("You are a helpful assistant. Always be concise.")
+    ///     .build()?;
+    /// ```
+    ///
+    /// # When to Use
+    ///
+    /// - When you need complete control over the agent's behavior
+    /// - When the default Deep Agent prompt doesn't fit your use case
+    /// - When integrating with existing prompt engineering workflows
+    ///
+    /// # When NOT to Use
+    ///
+    /// - For simple customizations, use `new("your instructions")` instead
+    /// - The default prompt includes important tool usage guidance
+    pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
+        self.custom_system_prompt = Some(system_prompt.into());
         self
     }
 
@@ -346,6 +381,7 @@ impl ConfigurableAgentBuilder {
     fn finalize(self, ctor: fn(DeepAgentConfig) -> DeepAgent) -> anyhow::Result<DeepAgent> {
         let Self {
             instructions,
+            custom_system_prompt,
             planner,
             tools,
             subagents,
@@ -395,6 +431,11 @@ impl ConfigurableAgentBuilder {
             .with_prompt_caching(enable_prompt_caching)
             .with_pii_sanitization(enable_pii_sanitization)
             .with_max_iterations(max_iterations.get());
+
+        // Apply custom system prompt if provided
+        if let Some(prompt) = custom_system_prompt {
+            cfg = cfg.with_system_prompt(prompt);
+        }
 
         if let Some(ckpt) = checkpointer {
             cfg = cfg.with_checkpointer(ckpt);
@@ -461,6 +502,33 @@ mod tests {
         assert_eq!(builder.max_iterations.get(), 15);
         assert!(!builder.auto_general_purpose);
         assert!(builder.enable_prompt_caching);
+        assert!(!builder.enable_pii_sanitization);
+    }
+
+    #[test]
+    fn test_builder_default_no_custom_system_prompt() {
+        let builder = ConfigurableAgentBuilder::new("test instructions");
+        assert!(builder.custom_system_prompt.is_none());
+    }
+
+    #[test]
+    fn test_builder_with_system_prompt() {
+        let custom_prompt = "You are a custom assistant.";
+        let builder = ConfigurableAgentBuilder::new("ignored").with_system_prompt(custom_prompt);
+
+        assert!(builder.custom_system_prompt.is_some());
+        assert_eq!(builder.custom_system_prompt.unwrap(), custom_prompt);
+    }
+
+    #[test]
+    fn test_builder_system_prompt_chaining() {
+        let builder = ConfigurableAgentBuilder::new("ignored")
+            .with_system_prompt("Custom prompt")
+            .with_max_iterations(20)
+            .with_pii_sanitization(false);
+
+        assert!(builder.custom_system_prompt.is_some());
+        assert_eq!(builder.max_iterations.get(), 20);
         assert!(!builder.enable_pii_sanitization);
     }
 }

@@ -401,14 +401,32 @@ impl AgentMiddleware for BaseSystemPromptMiddleware {
 /// - JSON examples of tool calling
 /// - Workflow guidance for multi-step tasks
 /// - Few-shot examples for common patterns
+///
+/// The middleware supports two modes:
+/// 1. **Default mode**: Combines custom instructions with the Deep Agent system prompt
+/// 2. **Override mode**: Uses a completely custom system prompt, bypassing the default
 pub struct DeepAgentPromptMiddleware {
     custom_instructions: String,
+    /// If set, this completely replaces the default Deep Agent system prompt
+    override_system_prompt: Option<String>,
 }
 
 impl DeepAgentPromptMiddleware {
     pub fn new(custom_instructions: impl Into<String>) -> Self {
         Self {
             custom_instructions: custom_instructions.into(),
+            override_system_prompt: None,
+        }
+    }
+
+    /// Create a middleware with a completely custom system prompt that bypasses
+    /// the default Deep Agent prompt.
+    ///
+    /// Use this when you need full control over the agent's system prompt.
+    pub fn with_override(system_prompt: impl Into<String>) -> Self {
+        Self {
+            custom_instructions: String::new(),
+            override_system_prompt: Some(system_prompt.into()),
         }
     }
 }
@@ -420,9 +438,15 @@ impl AgentMiddleware for DeepAgentPromptMiddleware {
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {
-        use crate::prompts::get_deep_agent_system_prompt;
-        let deep_prompt = get_deep_agent_system_prompt(&self.custom_instructions);
-        ctx.request.append_prompt(&deep_prompt);
+        let prompt = if let Some(ref override_prompt) = self.override_system_prompt {
+            // Use the custom system prompt directly, bypassing the Deep Agent prompt
+            override_prompt.clone()
+        } else {
+            // Use the default Deep Agent prompt with custom instructions prepended
+            use crate::prompts::get_deep_agent_system_prompt;
+            get_deep_agent_system_prompt(&self.custom_instructions)
+        };
+        ctx.request.append_prompt(&prompt);
         Ok(())
     }
 }
