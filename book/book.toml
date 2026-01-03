@@ -3,7 +3,6 @@ title = "Rust Deep Agents SDK"
 description = "Production-ready agentic AI framework for Rust"
 authors = ["YafaTek Solutions"]
 language = "en"
-multilingual = false
 src = "src"
 
 [build]
