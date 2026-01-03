@@ -59,9 +59,11 @@ Building AI agents shouldn't mean sacrificing performance or type safety. While 
 
 ### Multi-Provider LLM Support
 
-- **OpenAI**: GPT-4o, GPT-4, GPT-3.5-turbo
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Haiku
-- **Google Gemini**: Gemini 2.0 Flash, Gemini 1.5 Pro
+The SDK is **model-agnostic** — pass any model string supported by the provider:
+
+- **OpenAI**: Any model (e.g., `gpt-4o`, `gpt-4o-mini`, `o1-mini`)
+- **Anthropic**: Any model (e.g., `claude-sonnet-4-20250514`, `claude-haiku-4-20250514`)
+- **Google Gemini**: Any model (e.g., `gemini-2.5-flash`, `gemini-2.0-flash`)
 
 ### Ergonomic Tool System
 
@@ -204,13 +206,15 @@ rust-deep-agents-sdk/
 
 ### Provider Support
 
-| Provider | Models | Status |
-|----------|--------|--------|
-| **OpenAI** | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo | Stable |
-| **Anthropic** | claude-3-5-sonnet, claude-3-haiku | Stable |
-| **Google** | gemini-2.0-flash-exp, gemini-1.5-pro | Stable |
-| **AWS Bedrock** | Claude, Titan | Planned |
-| **Ollama** | Local models | Planned |
+The SDK is model-agnostic — you can use any model string supported by the provider's API.
+
+| Provider | Example Models | Status |
+|----------|----------------|--------|
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `o1-mini`, `gpt-4-turbo` | Stable |
+| **Anthropic** | `claude-sonnet-4-20250514`, `claude-haiku-4-20250514` | Stable |
+| **Google Gemini** | `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro` | Stable |
+
+> **Note**: Model availability depends on your API access. The SDK passes your model string directly to the provider — any model they support will work.
 
 ### Middleware Stack
 
@@ -246,12 +250,12 @@ let openai = Arc::new(OpenAiChatModel::new(
 
 // Anthropic Claude
 let claude = Arc::new(AnthropicMessagesModel::new(
-    AnthropicConfig::new(api_key, "claude-3-5-sonnet-20241022")?
+    AnthropicConfig::new(api_key, "claude-sonnet-4-20250514", 4096)?
 )?);
 
 // Google Gemini
 let gemini = Arc::new(GeminiChatModel::new(
-    GeminiConfig::new(api_key, "gemini-2.0-flash-exp")?
+    GeminiConfig::new(api_key, "gemini-2.5-flash")?
 )?);
 
 // Use any provider with the same builder API
@@ -306,7 +310,7 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
     .build()?;
 
 // Handle interrupts
-if let Some(interrupt) = agent.current_interrupt().await? {
+                if let Some(interrupt) = agent.current_interrupt().await? {
     println!("Approval needed for: {}", interrupt.tool_name);
     agent.resume_with_approval(HitlAction::Accept).await?;
 }
@@ -487,9 +491,13 @@ New contributors can look for issues labeled [`good first issue`](https://github
 
 ## Roadmap
 
+**Providers**
+- AWS Bedrock provider (Claude, Titan, Llama)
+- Ollama for local/self-hosted models
+- Azure OpenAI Service
+
+**Features**
 - Custom sub-agent execution graphs
-- AWS Bedrock provider
-- Ollama and local model support
 - Advanced state features (encryption, migrations)
 - Enhanced tool composition and validation
 - WebAssembly support
