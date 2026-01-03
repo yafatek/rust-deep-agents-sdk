@@ -1,6 +1,6 @@
 [package]
 name = "agents-core"
-version = "0.0.28"
+version = "0.0.29"
 edition = "2021"
 description = "Core traits, data models, and prompt primitives for building deep agents."
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -11,6 +11,10 @@ documentation = "https://docs.rs/agents-core"
 keywords = ["ai", "agents", "llm", "automation"]
 categories = ["api-bindings", "development-tools"]
 readme = "../../README.md"
+
+[features]
+default = []
+toon = ["dep:toon-format"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -24,6 +28,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+# Optional TOON support for token-efficient encoding
+toon-format = { version = "0.4", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

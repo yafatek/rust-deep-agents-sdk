@@ -13,6 +13,7 @@ pub mod prompts;
 pub mod security;
 pub mod state;
 pub mod tools;
+pub mod toon;
 
 pub use agent::{AgentDescriptor, AgentHandle, PlannerHandle};
 pub use command::{Command, StateDiff};
@@ -29,3 +30,4 @@ pub use persistence::{Checkpointer, CheckpointerConfig, InMemoryCheckpointer, Th
 pub use tools::{
     Tool, ToolBox, ToolContext, ToolParameterSchema, ToolRegistry, ToolResult, ToolSchema,
 };
+pub use toon::{ToonEncodeError, ToonEncoder};
