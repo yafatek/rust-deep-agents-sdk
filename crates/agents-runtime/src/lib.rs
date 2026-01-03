@@ -30,6 +30,9 @@ pub use providers::{
 // Re-export HITL types
 pub use middleware::HitlPolicy;
 
+// Re-export prompt format for TOON support
+pub use prompts::PromptFormat;
+
 /// Default runtime wrapper that delegates to an inner agent implementation.
 pub struct RuntimeAgent<T>
 where

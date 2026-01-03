@@ -4,6 +4,7 @@
 //! including parameter structs that mirror the Python SDK API.
 
 use crate::middleware::{token_tracking::TokenTrackingConfig, AgentMiddleware, HitlPolicy};
+use crate::prompts::PromptFormat;
 use agents_core::agent::PlannerHandle;
 use agents_core::persistence::Checkpointer;
 use agents_core::tools::ToolBox;
@@ -45,6 +46,8 @@ pub struct DeepAgentConfig {
     pub instructions: String,
     /// Optional custom system prompt that completely replaces the default Deep Agent prompt
     pub custom_system_prompt: Option<String>,
+    /// Format for tool call examples in the system prompt (JSON or TOON)
+    pub prompt_format: PromptFormat,
     pub planner: Arc<dyn PlannerHandle>,
     pub tools: Vec<ToolBox>,
     pub subagent_configs: Vec<SubAgentConfig>,
@@ -65,6 +68,7 @@ impl DeepAgentConfig {
         Self {
             instructions: instructions.into(),
             custom_system_prompt: None,
+            prompt_format: PromptFormat::default(),
             planner,
             tools: Vec::new(),
             subagent_configs: Vec::new(),
@@ -86,6 +90,17 @@ impl DeepAgentConfig {
     /// When set, the `instructions` field is ignored and this prompt is used directly.
     pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
         self.custom_system_prompt = Some(system_prompt.into());
+        self
+    }
+
+    /// Set the prompt format for tool call examples in the system prompt.
+    ///
+    /// - `PromptFormat::Json` (default): Uses JSON examples
+    /// - `PromptFormat::Toon`: Uses TOON format for 30-60% token reduction
+    ///
+    /// See: <https://github.com/toon-format/toon>
+    pub fn with_prompt_format(mut self, format: PromptFormat) -> Self {
+        self.prompt_format = format;
         self
     }
 

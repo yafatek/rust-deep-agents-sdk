@@ -13,6 +13,7 @@ use crate::middleware::{
     HitlPolicy,
 };
 use crate::planner::LlmBackedPlanner;
+use crate::prompts::PromptFormat;
 use agents_core::agent::PlannerHandle;
 use agents_core::llm::LanguageModel;
 use agents_core::persistence::Checkpointer;
@@ -26,6 +27,7 @@ use std::sync::Arc;
 pub struct ConfigurableAgentBuilder {
     instructions: String,
     custom_system_prompt: Option<String>,
+    prompt_format: PromptFormat,
     planner: Option<Arc<dyn PlannerHandle>>,
     tools: Vec<ToolBox>,
     subagents: Vec<SubAgentConfig>,
@@ -46,6 +48,7 @@ impl ConfigurableAgentBuilder {
         Self {
             instructions: instructions.into(),
             custom_system_prompt: None,
+            prompt_format: PromptFormat::default(),
             planner: None,
             tools: Vec::new(),
             subagents: Vec::new(),
@@ -105,6 +108,35 @@ impl ConfigurableAgentBuilder {
     /// - The default prompt includes important tool usage guidance
     pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
         self.custom_system_prompt = Some(system_prompt.into());
+        self
+    }
+
+    /// Set the prompt format for tool call examples.
+    ///
+    /// By default, the agent uses JSON format for tool call examples in the system prompt.
+    /// You can switch to TOON format for 30-60% token reduction.
+    ///
+    /// TOON (Token-Oriented Object Notation) is a compact, human-readable format
+    /// specifically designed for LLM prompts. See: <https://github.com/toon-format/toon>
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use agents_runtime::prompts::PromptFormat;
+    ///
+    /// // Use TOON format for token-efficient prompts
+    /// let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    ///     .with_model(model)
+    ///     .with_prompt_format(PromptFormat::Toon)
+    ///     .build()?;
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// If you use `with_system_prompt()` to override the entire system prompt,
+    /// the `prompt_format` setting will be ignored since you're providing your own prompt.
+    pub fn with_prompt_format(mut self, format: PromptFormat) -> Self {
+        self.prompt_format = format;
         self
     }
 
@@ -382,6 +414,7 @@ impl ConfigurableAgentBuilder {
         let Self {
             instructions,
             custom_system_prompt,
+            prompt_format,
             planner,
             tools,
             subagents,
@@ -430,7 +463,8 @@ impl ConfigurableAgentBuilder {
             .with_auto_general_purpose(auto_general_purpose)
             .with_prompt_caching(enable_prompt_caching)
             .with_pii_sanitization(enable_pii_sanitization)
-            .with_max_iterations(max_iterations.get());
+            .with_max_iterations(max_iterations.get())
+            .with_prompt_format(prompt_format);
 
         // Apply custom system prompt if provided
         if let Some(prompt) = custom_system_prompt {
@@ -529,6 +563,31 @@ mod tests {
 
         assert!(builder.custom_system_prompt.is_some());
         assert_eq!(builder.max_iterations.get(), 20);
+        assert!(!builder.enable_pii_sanitization);
+    }
+
+    #[test]
+    fn test_builder_default_prompt_format_is_json() {
+        let builder = ConfigurableAgentBuilder::new("test instructions");
+        assert_eq!(builder.prompt_format, PromptFormat::Json);
+    }
+
+    #[test]
+    fn test_builder_with_toon_prompt_format() {
+        let builder = ConfigurableAgentBuilder::new("test instructions")
+            .with_prompt_format(PromptFormat::Toon);
+        assert_eq!(builder.prompt_format, PromptFormat::Toon);
+    }
+
+    #[test]
+    fn test_builder_prompt_format_chaining() {
+        let builder = ConfigurableAgentBuilder::new("test instructions")
+            .with_prompt_format(PromptFormat::Toon)
+            .with_max_iterations(15)
+            .with_pii_sanitization(false);
+
+        assert_eq!(builder.prompt_format, PromptFormat::Toon);
+        assert_eq!(builder.max_iterations.get(), 15);
         assert!(!builder.enable_pii_sanitization);
     }
 }

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.29] - 2026-01-04
+
+### Added
+- **TOON Format Support**: Token-efficient encoding for system prompts ([#25](https://github.com/yafatek/rust-deep-agents-sdk/issues/25))
+  - Added `PromptFormat` enum with `Json` (default) and `Toon` variants
+  - New `with_prompt_format()` method on `ConfigurableAgentBuilder`
+  - TOON format provides 30-60% token reduction in system prompts
+  - Feature-gated: Enable with `toon` feature flag
+  - See: https://github.com/toon-format/toon
+
+- **ToonEncoder Utility**: New utility for TOON encoding (`agents-core::toon` module)
+  - `ToonEncoder` struct for encoding data to TOON format
+  - `encode_default()` for quick encoding with default options
+  - `tool_schema_to_toon()` for compact tool schema representation
+  - `format_tool_call_toon()` for encoding tool call examples
+  - Falls back to JSON when `toon` feature is disabled
+
+- **TOON System Prompt**: Alternative system prompt with TOON-formatted examples
+  - `get_deep_agent_system_prompt_toon()` function
+  - `get_deep_agent_system_prompt_formatted()` for format selection
+  - More compact tool call examples using TOON notation
+
+### Changed
+- `ConfigurableAgentBuilder` now includes `prompt_format` field
+- `DeepAgentConfig` now includes `prompt_format` field
+- `DeepAgentPromptMiddleware` supports format selection via `with_format()` constructor
+- Version bump to 0.0.29 across all crates
+
+### Dependencies
+- Added optional `toon-format = "0.4"` dependency to `agents-core`
+- New `toon` feature flag for `agents-core` and `agents-runtime`
+
 ## [0.0.28] - 2026-01-04
 
 ### Added

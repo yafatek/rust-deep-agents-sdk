@@ -398,15 +398,18 @@ impl AgentMiddleware for BaseSystemPromptMiddleware {
 /// This middleware is inspired by Python's deepagents package and Claude Code's system prompt.
 /// It provides:
 /// - Explicit tool usage rules with imperative language
-/// - JSON examples of tool calling
+/// - JSON or TOON examples of tool calling (configurable for token efficiency)
 /// - Workflow guidance for multi-step tasks
 /// - Few-shot examples for common patterns
 ///
-/// The middleware supports two modes:
-/// 1. **Default mode**: Combines custom instructions with the Deep Agent system prompt
-/// 2. **Override mode**: Uses a completely custom system prompt, bypassing the default
+/// The middleware supports three modes:
+/// 1. **JSON mode** (default): Uses JSON examples for tool calls
+/// 2. **TOON mode**: Uses TOON format for 30-60% token reduction
+/// 3. **Override mode**: Uses a completely custom system prompt, bypassing the default
 pub struct DeepAgentPromptMiddleware {
     custom_instructions: String,
+    /// Format for tool call examples in the system prompt
+    prompt_format: crate::prompts::PromptFormat,
     /// If set, this completely replaces the default Deep Agent system prompt
     override_system_prompt: Option<String>,
 }
@@ -415,6 +418,22 @@ impl DeepAgentPromptMiddleware {
     pub fn new(custom_instructions: impl Into<String>) -> Self {
         Self {
             custom_instructions: custom_instructions.into(),
+            prompt_format: crate::prompts::PromptFormat::Json,
+            override_system_prompt: None,
+        }
+    }
+
+    /// Create a middleware with a specific prompt format (JSON or TOON).
+    ///
+    /// Use TOON format for 30-60% token reduction in system prompts.
+    /// See: <https://github.com/toon-format/toon>
+    pub fn with_format(
+        custom_instructions: impl Into<String>,
+        format: crate::prompts::PromptFormat,
+    ) -> Self {
+        Self {
+            custom_instructions: custom_instructions.into(),
+            prompt_format: format,
             override_system_prompt: None,
         }
     }
@@ -426,6 +445,7 @@ impl DeepAgentPromptMiddleware {
     pub fn with_override(system_prompt: impl Into<String>) -> Self {
         Self {
             custom_instructions: String::new(),
+            prompt_format: crate::prompts::PromptFormat::Json,
             override_system_prompt: Some(system_prompt.into()),
         }
     }
@@ -442,9 +462,9 @@ impl AgentMiddleware for DeepAgentPromptMiddleware {
             // Use the custom system prompt directly, bypassing the Deep Agent prompt
             override_prompt.clone()
         } else {
-            // Use the default Deep Agent prompt with custom instructions prepended
-            use crate::prompts::get_deep_agent_system_prompt;
-            get_deep_agent_system_prompt(&self.custom_instructions)
+            // Use the formatted Deep Agent prompt based on prompt_format
+            use crate::prompts::get_deep_agent_system_prompt_formatted;
+            get_deep_agent_system_prompt_formatted(&self.custom_instructions, self.prompt_format)
         };
         ctx.request.append_prompt(&prompt);
         Ok(())
