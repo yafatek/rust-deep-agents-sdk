@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/yafatek/rust-deep-agents-sdk/discussions
+    about: Ask questions, share ideas, and discuss with the community
+  - name: 📖 Documentation
+    url: https://docs.rs/agents-sdk
+    about: Read the API documentation and guides
+  - name: 📚 Examples
+    url: https://github.com/yafatek/rust-deep-agents-sdk/tree/main/examples
+    about: Browse working examples and demos
+
