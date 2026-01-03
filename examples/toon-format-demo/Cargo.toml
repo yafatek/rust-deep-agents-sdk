@@ -1,0 +1,19 @@
+[package]
+name = "toon-format-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Demonstrates TOON format support for token-efficient system prompts"
+
+[dependencies]
+agents-sdk = { path = "../../crates/agents-sdk", features = ["toolkit"] }
+agents-runtime = { path = "../../crates/agents-runtime", features = ["toon"] }
+agents-core = { path = "../../crates/agents-core", features = ["toon"] }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+

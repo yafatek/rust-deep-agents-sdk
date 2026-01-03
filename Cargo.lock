@@ -4497,6 +4497,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "toon-format-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-core",
+ "agents-runtime",
+ "agents-sdk",
+ "anyhow",
+ "async-trait",
+ "dotenvy",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

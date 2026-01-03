@@ -26,6 +26,7 @@ members = [
     "examples/event-system-demo",
     "examples/pii-sanitization-demo",
     "examples/streaming-events-demo",
+    "examples/toon-format-demo",
 ]
 resolver = "2"
 

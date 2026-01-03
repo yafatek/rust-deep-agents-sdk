@@ -96,6 +96,12 @@ The SDK is **model-agnostic** — pass any model string supported by the provide
 - Sensitive field redaction
 - Compliance-ready event logging
 
+### Token Optimization with TOON Format
+
+- [TOON (Token-Oriented Object Notation)](docs/TOON_FORMAT.md) support for 30-60% token reduction
+- Compact, human-readable data serialization
+- Feature-gated opt-in via `toon` feature flag
+
 ---
 
 ## Quick Start
@@ -106,7 +112,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-agents-sdk = "0.0.28"
+agents-sdk = "0.0.29"
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 ```
@@ -171,6 +177,7 @@ Explore comprehensive examples demonstrating SDK capabilities:
 | [`subagent-demo`](examples/subagent-demo) | Multi-agent delegation | Advanced |
 | [`streaming-events-demo`](examples/streaming-events-demo) | SSE/WebSocket streaming | Advanced |
 | [`automotive-web-service`](examples/automotive-web-service) | Full-stack web application | Advanced |
+| [`toon-format-demo`](examples/toon-format-demo) | Token-efficient TOON format | Intermediate |
 
 ### Running Examples
 
@@ -417,6 +424,45 @@ let agent = ConfigurableAgentBuilder::new("You are a project coordinator.")
 
 </details>
 
+<details>
+<summary><strong>TOON Format (Token Optimization)</strong></summary>
+
+TOON (Token-Oriented Object Notation) is a compact data format that reduces token usage by 30-60% compared to JSON. Enable it for cost savings and faster responses:
+
+```rust
+use agents_sdk::{ConfigurableAgentBuilder, PromptFormat};
+
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
+    .with_model(model)
+    .with_prompt_format(PromptFormat::Toon)  // Enable TOON format
+    .build()?;
+```
+
+You can also encode data directly:
+
+```rust
+use agents_core::toon::ToonEncoder;
+use serde_json::json;
+
+let encoder = ToonEncoder::new();
+let data = json!({
+    "users": [
+        {"id": 1, "name": "Alice", "role": "admin"},
+        {"id": 2, "name": "Bob", "role": "user"}
+    ]
+});
+
+// TOON output is ~40% smaller than JSON
+let toon_string = encoder.encode(&data)?;
+// users[2]{id,name,role}:
+//   1,Alice,admin
+//   2,Bob,user
+```
+
+See the [TOON Format Guide](docs/TOON_FORMAT.md) and [`toon-format-demo`](examples/toon-format-demo) for more details.
+
+</details>
+
 ---
 
 ## Feature Flags
@@ -424,25 +470,29 @@ let agent = ConfigurableAgentBuilder::new("You are a project coordinator.")
 ```toml
 [dependencies]
 # Default: includes toolkit
-agents-sdk = "0.0.28"
+agents-sdk = "0.0.29"
 
 # Minimal: core only
-agents-sdk = { version = "0.0.28", default-features = false }
+agents-sdk = { version = "0.0.29", default-features = false }
 
 # With persistence
-agents-sdk = { version = "0.0.28", features = ["redis"] }
-agents-sdk = { version = "0.0.28", features = ["postgres"] }
+agents-sdk = { version = "0.0.29", features = ["redis"] }
+agents-sdk = { version = "0.0.29", features = ["postgres"] }
 
 # With AWS
-agents-sdk = { version = "0.0.28", features = ["aws", "dynamodb"] }
+agents-sdk = { version = "0.0.29", features = ["aws", "dynamodb"] }
+
+# With TOON format (token optimization)
+agents-sdk = { version = "0.0.29", features = ["toon"] }
 
 # Everything
-agents-sdk = { version = "0.0.28", features = ["full"] }
+agents-sdk = { version = "0.0.29", features = ["full"] }
 ```
 
 | Feature | Description |
 |---------|-------------|
 | `toolkit` | Built-in tools (default) |
+| `toon` | TOON format for token-efficient prompts |
 | `redis` | Redis persistence backend |
 | `postgres` | PostgreSQL persistence backend |
 | `dynamodb` | DynamoDB persistence backend |
