@@ -10,10 +10,6 @@ src = "src"
 build-dir = "../docs-site"
 create-missing = false
 
-[preprocessor.toc]
-command = "mdbook-toc"
-renderer = ["html"]
-
 [output.html]
 default-theme = "rust"
 preferred-dark-theme = "ayu"
@@ -30,10 +26,6 @@ fold.level = 1
 
 [output.html.print]
 enable = true
-
-[output.html.fold]
-enable = true
-level = 1
 
 [output.html.playground]
 editable = true
