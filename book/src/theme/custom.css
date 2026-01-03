@@ -1,0 +1,81 @@
+/* Custom theme for Rust Deep Agents SDK documentation */
+
+:root {
+    --accent-color: #f97316; /* Orange accent */
+    --rust-orange: #f74c00;
+    --rust-red: #b7410e;
+}
+
+/* Hero section */
+.hero {
+    text-align: center;
+    margin: 2rem 0;
+}
+
+.hero img {
+    max-width: 400px;
+    width: 100%;
+}
+
+/* Badges */
+.badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 1rem 0;
+}
+
+/* Code blocks */
+pre code {
+    font-size: 0.9rem;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    margin: 1rem 0;
+}
+
+table th {
+    background: var(--quote-bg);
+    font-weight: 600;
+}
+
+table td, table th {
+    padding: 0.75rem;
+    border: 1px solid var(--table-border-color);
+}
+
+/* Callouts */
+.warning {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.info {
+    background: #dbeafe;
+    border-left: 4px solid #3b82f6;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+/* Navigation */
+.nav-chapters {
+    font-size: 0.95rem;
+}
+
+/* Chapter titles */
+.chapter li.chapter-item {
+    margin: 0.5rem 0;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .hero img {
+        max-width: 280px;
+    }
+}
+
