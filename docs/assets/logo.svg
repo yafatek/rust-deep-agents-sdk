@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <defs>
+    <linearGradient id="rustGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F74C00;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#CE422B;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="agentGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#667EEA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764BA2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rust Crab Icon (Simplified) -->
+  <g transform="translate(10, 20)">
+    <!-- Body -->
+    <ellipse cx="40" cy="50" rx="35" ry="28" fill="url(#rustGradient)"/>
+    
+    <!-- Claws -->
+    <path d="M 5 35 Q -5 25 5 20 Q 15 25 10 35" fill="url(#rustGradient)"/>
+    <path d="M 75 35 Q 85 25 75 20 Q 65 25 70 35" fill="url(#rustGradient)"/>
+    
+    <!-- Eyes -->
+    <circle cx="30" cy="42" r="8" fill="#1a1a1a"/>
+    <circle cx="50" cy="42" r="8" fill="#1a1a1a"/>
+    <circle cx="32" cy="40" r="3" fill="white"/>
+    <circle cx="52" cy="40" r="3" fill="white"/>
+    
+    <!-- Gear teeth (Rust logo element) -->
+    <g fill="url(#rustGradient)" opacity="0.9">
+      <rect x="36" y="8" width="8" height="10" rx="2"/>
+      <rect x="20" y="12" width="8" height="8" rx="2" transform="rotate(-30 24 16)"/>
+      <rect x="52" y="12" width="8" height="8" rx="2" transform="rotate(30 56 16)"/>
+    </g>
+  </g>
+  
+  <!-- Text: Deep Agents -->
+  <text x="100" y="55" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="32" font-weight="700" fill="#1a1a1a">
+    Deep <tspan fill="url(#agentGradient)">Agents</tspan>
+  </text>
+  
+  <!-- Text: SDK -->
+  <text x="100" y="85" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" font-weight="500" fill="#666">
+    SDK for Rust
+  </text>
+  
+  <!-- Tagline -->
+  <text x="100" y="108" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#888">
+    Type-safe • Blazing Fast • Production Ready
+  </text>
+</svg>
+
