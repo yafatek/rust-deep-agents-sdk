@@ -61,9 +61,9 @@ Building AI agents shouldn't mean sacrificing performance or type safety. While 
 
 The SDK is **model-agnostic** — pass any model string supported by the provider:
 
-- **OpenAI**: Any model (e.g., `gpt-4o`, `gpt-4o-mini`, `o1-mini`)
-- **Anthropic**: Any model (e.g., `claude-sonnet-4-20250514`, `claude-haiku-4-20250514`)
-- **Google Gemini**: Any model (e.g., `gemini-2.5-flash`, `gemini-2.0-flash`)
+- **OpenAI**: Any model (e.g., `gpt-5.2`, `gpt-4o`, `o1-pro`, `gpt-4o-mini`)
+- **Anthropic**: Any model (e.g., `claude-opus-4.5`, `claude-sonnet-4.5`, `claude-haiku-4.5`)
+- **Google Gemini**: Any model (e.g., `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`)
 
 ### Ergonomic Tool System
 
@@ -210,9 +210,9 @@ The SDK is model-agnostic — you can use any model string supported by the prov
 
 | Provider | Example Models | Status |
 |----------|----------------|--------|
-| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `o1-mini`, `gpt-4-turbo` | Stable |
-| **Anthropic** | `claude-sonnet-4-20250514`, `claude-haiku-4-20250514` | Stable |
-| **Google Gemini** | `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro` | Stable |
+| **OpenAI** | `gpt-5.2`, `gpt-4o`, `o1-pro`, `o1-mini`, `gpt-4o-mini` | Stable |
+| **Anthropic** | `claude-opus-4.5`, `claude-sonnet-4.5`, `claude-haiku-4.5` | Stable |
+| **Google Gemini** | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash` | Stable |
 
 > **Note**: Model availability depends on your API access. The SDK passes your model string directly to the provider — any model they support will work.
 
@@ -250,12 +250,12 @@ let openai = Arc::new(OpenAiChatModel::new(
 
 // Anthropic Claude
 let claude = Arc::new(AnthropicMessagesModel::new(
-    AnthropicConfig::new(api_key, "claude-sonnet-4-20250514", 4096)?
+    AnthropicConfig::new(api_key, "claude-sonnet-4.5", 4096)?
 )?);
 
 // Google Gemini
 let gemini = Arc::new(GeminiChatModel::new(
-    GeminiConfig::new(api_key, "gemini-2.5-flash")?
+    GeminiConfig::new(api_key, "gemini-2.5-pro")?
 )?);
 
 // Use any provider with the same builder API
