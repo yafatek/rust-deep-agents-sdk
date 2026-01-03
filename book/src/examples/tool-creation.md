@@ -56,10 +56,12 @@ async fn main() -> anyhow::Result<()> {
         "You are a helpful assistant with tools for math, time, search, and greetings."
     )
     .with_model(model)
-    .with_tool(AddTool::as_tool())
-    .with_tool(GetTimeTool::as_tool())
-    .with_tool(SearchTool::as_tool())
-    .with_tool(GreetTool::as_tool())
+    .with_tools(vec![
+        AddTool::as_tool(),
+        GetTimeTool::as_tool(),
+        SearchTool::as_tool(),
+        GreetTool::as_tool(),
+    ])
     .build()?;
     
     // Test various tools

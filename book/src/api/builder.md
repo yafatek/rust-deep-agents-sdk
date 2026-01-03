@@ -242,8 +242,10 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
     .with_model(model)
     
     // Tools
-    .with_tool(SearchTool::as_tool())
-    .with_tool(CalculatorTool::as_tool())
+    .with_tools(vec![
+        SearchTool::as_tool(),
+        CalculatorTool::as_tool(),
+    ])
     
     // Persistence
     .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))

@@ -175,8 +175,10 @@ async fn main() -> anyhow::Result<()> {
          You can search the knowledge base and perform calculations."
     )
     .with_model(model)
-    .with_tool(SearchKbTool::as_tool())
-    .with_tool(CalculateTool::as_tool())
+    .with_tools(vec![
+        SearchKbTool::as_tool(),
+        CalculateTool::as_tool(),
+    ])
     .build()?;
     
     let response = agent.handle_message(

@@ -111,9 +111,11 @@ async fn get_product(product_id: u64) -> String {
 ```rust
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
     .with_model(model)
-    .with_tool(SearchTool::as_tool())
-    .with_tool(SendEmailTool::as_tool())
-    .with_tool(GetProductTool::as_tool())
+    .with_tools(vec![
+        SearchTool::as_tool(),
+        SendEmailTool::as_tool(),
+        GetProductTool::as_tool(),
+    ])
     .build()?;
 ```
 

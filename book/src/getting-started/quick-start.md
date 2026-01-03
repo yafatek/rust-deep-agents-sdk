@@ -73,8 +73,10 @@ async fn main() -> anyhow::Result<()> {
         "You are a friendly assistant. Use your tools to help users."
     )
     .with_model(model)
-    .with_tool(GreetTool::as_tool())
-    .with_tool(AddTool::as_tool())
+    .with_tools(vec![
+        GreetTool::as_tool(),
+        AddTool::as_tool(),
+    ])
     .build()?;
 
     // Create a conversation state

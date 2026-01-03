@@ -134,8 +134,10 @@ The macro converts function names to tool names:
 
 ```rust
 let agent = ConfigurableAgentBuilder::new("...")
-    .with_tool(MyToolTool::as_tool())
-    .with_tool(SearchTool::as_tool())
+    .with_tools(vec![
+        MyToolTool::as_tool(),
+        SearchTool::as_tool(),
+    ])
     .build()?;
 ```
 

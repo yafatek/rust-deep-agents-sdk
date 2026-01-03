@@ -131,9 +131,11 @@ async fn main() -> anyhow::Result<()> {
     )
     .with_model(model)
     .with_checkpointer(checkpointer)
-    .with_tool(GetWeatherTool::as_tool())
-    .with_tool(GetForecastTool::as_tool())
-    .with_tool(ConvertTemperatureTool::as_tool())
+    .with_tools(vec![
+        GetWeatherTool::as_tool(),
+        GetForecastTool::as_tool(),
+        ConvertTemperatureTool::as_tool(),
+    ])
     .build()?;
 
     info!("✅ Agent ready!");
@@ -247,9 +249,11 @@ async fn main() -> anyhow::Result<()> {
     )
     .with_model(model)
     .with_checkpointer(Arc::new(InMemoryCheckpointer::new()))
-    .with_tool(GetWeatherTool::as_tool())
-    .with_tool(GetForecastTool::as_tool())
-    .with_tool(ConvertTemperatureTool::as_tool())
+    .with_tools(vec![
+        GetWeatherTool::as_tool(),
+        GetForecastTool::as_tool(),
+        ConvertTemperatureTool::as_tool(),
+    ])
     .build()?;
 
     let state = Arc::new(AgentStateSnapshot::default());

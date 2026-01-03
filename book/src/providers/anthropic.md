@@ -213,8 +213,10 @@ async fn main() -> anyhow::Result<()> {
          You can search for information and read files."
     )
     .with_model(model)
-    .with_tool(SearchTool::as_tool())
-    .with_tool(ReadFileTool::as_tool())
+    .with_tools(vec![
+        SearchTool::as_tool(),
+        ReadFileTool::as_tool(),
+    ])
     .with_prompt_caching(true)
     .build()?;
     

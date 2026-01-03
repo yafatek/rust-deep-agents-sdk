@@ -103,9 +103,11 @@ async fn main() -> anyhow::Result<()> {
          the user's intent before taking action."
     )
     .with_model(model)
-    .with_tool(TransferFundsTool::as_tool())
-    .with_tool(ExecuteTradeTool::as_tool())
-    .with_tool(GetBalanceTool::as_tool())
+    .with_tools(vec![
+        TransferFundsTool::as_tool(),
+        ExecuteTradeTool::as_tool(),
+        GetBalanceTool::as_tool(),
+    ])
     .with_tool_interrupts(policies)
     .with_checkpointer(checkpointer)
     .build()?;

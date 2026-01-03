@@ -211,8 +211,10 @@ async fn main() -> anyhow::Result<()> {
         "You are a helpful assistant that can delete files and send emails."
     )
     .with_model(model)
-    .with_tool(DeleteFileTool::as_tool())
-    .with_tool(SendEmailTool::as_tool())
+    .with_tools(vec![
+        DeleteFileTool::as_tool(),
+        SendEmailTool::as_tool(),
+    ])
     .with_tool_interrupts(policies)
     .with_checkpointer(checkpointer)
     .build()?;
