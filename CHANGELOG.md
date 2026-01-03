@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.28] - 2026-01-04
+
+### Added
+- **Custom System Prompt Override**: Added `with_system_prompt()` method to `ConfigurableAgentBuilder`
+  - Allows developers to completely override the default Deep Agent system prompt
+  - Use when you need full control over the agent's behavior
+  - The default Deep Agent prompt includes tool usage guidance, which is bypassed when using this method
+  - New `DeepAgentPromptMiddleware::with_override()` constructor for custom prompts
+  - Closes issue #26
+
+### Changed
+- `DeepAgentConfig` now includes optional `custom_system_prompt` field
+- `DeepAgentPromptMiddleware` supports two modes: default (with tool usage guidance) and override (custom prompt)
+
 ## [0.0.27] - 2025-12-11
 
 ### Fixed

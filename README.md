@@ -106,7 +106,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-agents-sdk = "0.0.27"
+agents-sdk = "0.0.28"
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 ```
@@ -424,20 +424,20 @@ let agent = ConfigurableAgentBuilder::new("You are a project coordinator.")
 ```toml
 [dependencies]
 # Default: includes toolkit
-agents-sdk = "0.0.27"
+agents-sdk = "0.0.28"
 
 # Minimal: core only
-agents-sdk = { version = "0.0.27", default-features = false }
+agents-sdk = { version = "0.0.28", default-features = false }
 
 # With persistence
-agents-sdk = { version = "0.0.27", features = ["redis"] }
-agents-sdk = { version = "0.0.27", features = ["postgres"] }
+agents-sdk = { version = "0.0.28", features = ["redis"] }
+agents-sdk = { version = "0.0.28", features = ["postgres"] }
 
 # With AWS
-agents-sdk = { version = "0.0.27", features = ["aws", "dynamodb"] }
+agents-sdk = { version = "0.0.28", features = ["aws", "dynamodb"] }
 
 # Everything
-agents-sdk = { version = "0.0.27", features = ["full"] }
+agents-sdk = { version = "0.0.28", features = ["full"] }
 ```
 
 | Feature | Description |

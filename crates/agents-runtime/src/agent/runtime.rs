@@ -1051,7 +1051,16 @@ pub fn create_deep_agent_from_config(config: DeepAgentConfig) -> DeepAgent {
         config.event_dispatcher.clone(),
     ));
     let base_prompt = Arc::new(BaseSystemPromptMiddleware);
-    let deep_agent_prompt = Arc::new(DeepAgentPromptMiddleware::new(config.instructions.clone()));
+
+    // Create Deep Agent prompt middleware - use override if custom system prompt is set
+    let deep_agent_prompt: Arc<dyn AgentMiddleware> =
+        if let Some(ref custom_prompt) = config.custom_system_prompt {
+            Arc::new(DeepAgentPromptMiddleware::with_override(
+                custom_prompt.clone(),
+            ))
+        } else {
+            Arc::new(DeepAgentPromptMiddleware::new(config.instructions.clone()))
+        };
     let summarization = config.summarization.as_ref().map(|cfg| {
         Arc::new(SummarizationMiddleware::new(
             cfg.messages_to_keep,

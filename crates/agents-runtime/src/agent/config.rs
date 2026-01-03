@@ -43,6 +43,8 @@ pub struct CreateDeepAgentParams {
 /// This is the internal configuration used by the builder and runtime.
 pub struct DeepAgentConfig {
     pub instructions: String,
+    /// Optional custom system prompt that completely replaces the default Deep Agent prompt
+    pub custom_system_prompt: Option<String>,
     pub planner: Arc<dyn PlannerHandle>,
     pub tools: Vec<ToolBox>,
     pub subagent_configs: Vec<SubAgentConfig>,
@@ -62,6 +64,7 @@ impl DeepAgentConfig {
     pub fn new(instructions: impl Into<String>, planner: Arc<dyn PlannerHandle>) -> Self {
         Self {
             instructions: instructions.into(),
+            custom_system_prompt: None,
             planner,
             tools: Vec::new(),
             subagent_configs: Vec::new(),
@@ -76,6 +79,14 @@ impl DeepAgentConfig {
             token_tracking_config: None,
             max_iterations: NonZeroUsize::new(10).unwrap(),
         }
+    }
+
+    /// Set a custom system prompt that completely replaces the default Deep Agent prompt.
+    ///
+    /// When set, the `instructions` field is ignored and this prompt is used directly.
+    pub fn with_system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
+        self.custom_system_prompt = Some(system_prompt.into());
+        self
     }
 
     pub fn with_tool(mut self, tool: ToolBox) -> Self {
