@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/yafatek/rust-deep-agents-sdk/main/docs/assets/logo.svg" alt="Deep Agents SDK" width="400">
 </div>
 
-**The first Rust implementation of the [Deep Agents](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa) architecture — production-ready AI agents with planning, delegation, and persistent memory.**
+**A Rust implementation of the [Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview) architecture — production-ready AI agents with planning, sub-agents, and persistent memory.**
 
 [![Crates.io](https://img.shields.io/crates/v/agents-sdk.svg?style=flat-square&logo=rust)](https://crates.io/crates/agents-sdk)
 [![docs.rs](https://img.shields.io/docsrs/agents-sdk?style=flat-square&logo=docs.rs)](https://docs.rs/agents-sdk)
@@ -15,22 +15,20 @@
 
 ## What are Deep Agents?
 
-**Deep Agents** represent an evolution beyond simple "shallow" agents that operate in basic ReAct (Reason + Act) loops. While shallow agents can handle straightforward tasks, they struggle with complex, multi-step workflows that require planning, delegation, and long-term memory.
+[Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview) is an architecture pioneered by LangChain for building agents that can tackle complex, multi-step tasks. Built on LangGraph and inspired by applications like **Claude Code**, **Deep Research**, and **Manus**, deep agents go beyond simple ReAct loops.
 
-Deep Agents solve this by incorporating four key architectural components:
+| Capability | Description |
+|-----------|-------------|
+| **Planning & Task Decomposition** | Built-in `write_todos` tool to break tasks into discrete steps |
+| **Context Management** | File system tools (`ls`, `read_file`, `write_file`, `edit_file`) |
+| **Sub-Agent Spawning** | `task` tool to delegate work to specialized sub-agents |
+| **Long-Term Memory** | Persistent memory across conversations and threads |
 
-| Component | Shallow Agents | Deep Agents |
-|-----------|---------------|-------------|
-| **System Prompts** | Basic instructions | Comprehensive behavioral frameworks |
-| **Planning** | None - reactive only | Structured task decomposition |
-| **Sub-Agents** | Single agent | Specialized agents for delegation |
-| **Memory** | Stateless or short-term | Persistent, contextual memory |
-
-This architecture enables agents to:
-- Break complex tasks into manageable subtasks
-- Delegate specialized work to expert sub-agents
-- Maintain context across long-running workflows
-- Plan and adapt strategies based on intermediate results
+Use deep agents when you need agents that can:
+- Handle complex, multi-step tasks requiring planning
+- Manage large amounts of context through file system tools
+- Delegate work to specialized sub-agents for context isolation
+- Persist memory across conversations and threads
 
 ## What is This SDK?
 

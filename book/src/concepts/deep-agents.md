@@ -1,68 +1,29 @@
 # Understanding Deep Agents
 
-This page explains the **Deep Agents** architecture that forms the foundation of this SDK.
+This SDK is a Rust implementation of the [Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview) architecture pioneered by LangChain.
 
-## The Problem with Shallow Agents
+## What are Deep Agents?
 
-Traditional AI agents follow a simple **ReAct** (Reason + Act) loop:
+**Deep Agents** is a standalone library for building agents that can tackle complex, multi-step tasks. Built on LangGraph and inspired by applications like **Claude Code**, **Deep Research**, and **Manus**, deep agents come with planning capabilities, file systems for context management, and the ability to spawn subagents.
 
-```
-User Query → LLM Thinks → Takes Action → Returns Result
-```
+### When to Use Deep Agents
 
-This works for simple tasks like:
-- "What's 2 + 2?"
-- "Send an email to John"
-- "Look up the weather"
+Use deep agents when you need agents that can:
 
-But shallow agents **fail** at complex tasks:
-- "Research competitors, analyze their pricing, and draft a strategy report"
-- "Debug this codebase, fix the issues, and write tests"
-- "Plan a multi-city trip with flights, hotels, and activities"
+- **Handle complex, multi-step tasks** that require planning and decomposition
+- **Manage large amounts of context** through file system tools
+- **Delegate work** to specialized subagents for context isolation
+- **Persist memory** across conversations and threads
 
-**Why?** Because shallow agents:
-- Cannot break down complex tasks into steps
-- Don't know when to delegate specialized work
-- Lose context over long interactions
-- React to immediate input without planning
+For simpler use cases, a basic ReAct agent may be sufficient.
 
-## The Deep Agents Architecture
+## Core Capabilities
 
-Deep Agents solve these limitations with four architectural pillars:
+The Deep Agents architecture provides four core capabilities:
 
-### 1. Comprehensive System Prompts
+### 1. Planning and Task Decomposition
 
-Instead of simple role descriptions, Deep Agents use **detailed behavioral frameworks**:
-
-```rust
-// ❌ Shallow Agent Prompt
-"You are a helpful assistant."
-
-// ✅ Deep Agent Prompt
-"You are an expert research assistant specializing in market analysis.
-
-Your methodology:
-1. First, identify the core research question
-2. Break it into 3-5 sub-questions
-3. For each sub-question, gather data from multiple sources
-4. Cross-validate findings before synthesis
-5. Present conclusions with confidence levels
-
-When uncertain, explicitly state your confidence level (high/medium/low).
-Always cite sources and distinguish between facts and inferences."
-```
-
-The SDK's `ConfigurableAgentBuilder` supports rich system prompts:
-
-```rust
-let agent = ConfigurableAgentBuilder::new(detailed_instructions)
-    .with_model(model)
-    .build()?;
-```
-
-### 2. Planning and Task Decomposition
-
-Deep Agents can **plan** before acting. They break complex tasks into structured steps:
+Deep Agents include a built-in `write_todos` tool that enables agents to break down complex tasks into discrete steps, track progress, and adapt plans as new information emerges.
 
 ```
 User: "Research AI startups and create an investment memo"
@@ -77,16 +38,31 @@ Deep Agent Plan:
 
 The SDK enables this through the middleware and tool system:
 
+In this SDK, you can use built-in tools like `write_todos`:
+
 ```rust
-#[tool("Create a structured plan for completing a complex task")]
-fn create_plan(task: String, constraints: Option<String>) -> String {
-    // Planning logic
-}
+// Built-in planning tools
+let agent = ConfigurableAgentBuilder::new(instructions)
+    .with_model(model)
+    .with_builtin_tools(["write_todos", "read_file", "write_file"])
+    .build()?;
 ```
 
-### 3. Sub-Agent Delegation
+### 2. Context Management
 
-Instead of one agent doing everything, Deep Agents **delegate** to specialized sub-agents:
+File system tools (`ls`, `read_file`, `write_file`, `edit_file`) allow agents to offload large context to memory, preventing context window overflow and enabling work with variable-length tool results.
+
+```rust
+// Enable file system tools for context management
+let agent = ConfigurableAgentBuilder::new(instructions)
+    .with_model(model)
+    .with_builtin_tools(["ls", "read_file", "write_file", "edit_file"])
+    .build()?;
+```
+
+### 3. Sub-Agent Spawning
+
+A built-in `task` tool enables agents to spawn specialized subagents for context isolation. This keeps the main agent's context clean while still going deep on specific subtasks.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -129,9 +105,9 @@ let agent = ConfigurableAgentBuilder::new(orchestrator_prompt)
     .build()?;
 ```
 
-### 4. Persistent Memory
+### 4. Long-term Memory
 
-Deep Agents maintain **context across sessions** using persistent checkpointers:
+Extend agents with persistent memory across threads. Agents can save and retrieve information from previous conversations:
 
 ```rust
 // PostgreSQL for production
@@ -233,11 +209,16 @@ let agent = ConfigurableAgentBuilder::new(
 .build()?;
 ```
 
-## Attribution
+## Relationship to the LangChain Ecosystem
 
-The Deep Agents architecture was introduced in the article ["Engineering Depth with Deep Agents"](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa). 
+The [Deep Agents architecture](https://docs.langchain.com/oss/python/deepagents/overview) was pioneered by LangChain and is built on top of:
 
-This SDK is the first Rust implementation of this architecture, bringing the benefits of:
+- **LangGraph** - Provides the underlying graph execution and state management
+- **LangChain** - Tools and model integrations
+- **LangSmith** - Observability, evaluation, and deployment
+
+This SDK brings the Deep Agents architecture to **Rust**, providing:
+
 - **Type safety** - Catch errors at compile time
 - **Performance** - Native speed for production workloads
 - **Memory safety** - No runtime crashes from memory bugs

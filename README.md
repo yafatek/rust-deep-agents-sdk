@@ -5,7 +5,7 @@
 <h1 align="center">Rust Deep Agents SDK</h1>
 
 <p align="center">
-  <strong>The first Rust implementation of the <a href="https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa">Deep Agents</a> architecture — production-ready AI agents with planning, delegation, and persistent memory.</strong>
+  <strong>A Rust implementation of the <a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents</a> architecture — production-ready AI agents with planning, sub-agents, and persistent memory.</strong>
 </p>
 
 <p align="center">
@@ -29,16 +29,16 @@
 
 ## What are Deep Agents?
 
-[Deep Agents](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa) are an evolution beyond simple ReAct-loop agents. While "shallow" agents react to input one step at a time, **Deep Agents** handle complex, multi-step tasks through:
+[Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview) is an architecture pioneered by LangChain for building agents that can tackle complex, multi-step tasks. Inspired by applications like Claude Code, Deep Research, and Manus, deep agents go beyond simple ReAct loops with:
 
-| Component | What It Does |
+| Capability | Description |
 |-----------|-------------|
-| **Comprehensive Prompts** | Detailed behavioral frameworks, not just "you are a helpful assistant" |
-| **Task Planning** | Break complex work into structured, manageable steps |
-| **Sub-Agent Delegation** | Specialized agents for research, analysis, writing, etc. |
-| **Persistent Memory** | Context that survives across sessions and restarts |
+| **Planning & Task Decomposition** | Built-in `write_todos` tool to break down complex tasks into discrete steps |
+| **Context Management** | File system tools (`ls`, `read_file`, `write_file`, `edit_file`) to manage large context |
+| **Sub-Agent Spawning** | Delegate work to specialized sub-agents for context isolation |
+| **Long-Term Memory** | Persist memory across conversations and threads |
 
-This SDK is the **first Rust implementation** of this architecture, bringing type safety, native performance, and memory safety to Deep Agents.
+This SDK brings the Deep Agents architecture to **Rust**, with type safety, native performance, and memory safety.
 
 ## Why Rust for Deep Agents?
 
