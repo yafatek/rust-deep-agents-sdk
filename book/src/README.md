@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/yafatek/rust-deep-agents-sdk/main/docs/assets/logo.svg" alt="Deep Agents SDK" width="400">
 </div>
 
-**Build production-ready AI agents in Rust with type safety, blazing performance, and enterprise features.**
+**The first Rust implementation of the [Deep Agents](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa) architecture — production-ready AI agents with planning, delegation, and persistent memory.**
 
 [![Crates.io](https://img.shields.io/crates/v/agents-sdk.svg?style=flat-square&logo=rust)](https://crates.io/crates/agents-sdk)
 [![docs.rs](https://img.shields.io/docsrs/agents-sdk?style=flat-square&logo=docs.rs)](https://docs.rs/agents-sdk)
@@ -32,11 +32,11 @@ This architecture enables agents to:
 - Maintain context across long-running workflows
 - Plan and adapt strategies based on intermediate results
 
-> **Attribution**: The Deep Agents concept was introduced in ["Engineering Depth with Deep Agents"](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa). This SDK brings that architecture to the Rust ecosystem.
+## What is This SDK?
 
-## What is Deep Agents SDK?
+This is the **first Rust implementation** of the [Deep Agents architecture](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa), bringing type safety, native performance, and memory safety to complex AI agent workflows.
 
-The **Rust Deep Agents SDK** is the first high-performance Rust implementation of the Deep Agents architecture. It enables you to build production-ready AI agents that can:
+The SDK enables you to build production-ready agents that can:
 
 - **Use tools** to interact with external systems (APIs, databases, file systems)
 - **Maintain state** across conversations with persistent memory

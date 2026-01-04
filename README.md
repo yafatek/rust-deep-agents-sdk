@@ -5,7 +5,7 @@
 <h1 align="center">Rust Deep Agents SDK</h1>
 
 <p align="center">
-  <strong>Build production-ready AI agents in Rust with type safety, blazing performance, and enterprise features.</strong>
+  <strong>The first Rust implementation of the <a href="https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa">Deep Agents</a> architecture — production-ready AI agents with planning, delegation, and persistent memory.</strong>
 </p>
 
 <p align="center">
@@ -27,7 +27,20 @@
 
 ---
 
-## Why Rust Deep Agents?
+## What are Deep Agents?
+
+[Deep Agents](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa) are an evolution beyond simple ReAct-loop agents. While "shallow" agents react to input one step at a time, **Deep Agents** handle complex, multi-step tasks through:
+
+| Component | What It Does |
+|-----------|-------------|
+| **Comprehensive Prompts** | Detailed behavioral frameworks, not just "you are a helpful assistant" |
+| **Task Planning** | Break complex work into structured, manageable steps |
+| **Sub-Agent Delegation** | Specialized agents for research, analysis, writing, etc. |
+| **Persistent Memory** | Context that survives across sessions and restarts |
+
+This SDK is the **first Rust implementation** of this architecture, bringing type safety, native performance, and memory safety to Deep Agents.
+
+## Why Rust for Deep Agents?
 
 Building AI agents shouldn't mean sacrificing performance or type safety. While Python frameworks dominate the AI space, **Rust Deep Agents SDK** brings the reliability and speed of Rust to agent development.
 
