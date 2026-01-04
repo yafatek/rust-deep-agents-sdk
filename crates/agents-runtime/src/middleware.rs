@@ -158,8 +158,11 @@ impl AgentMiddleware for PlanningMiddleware {
     }
 
     fn tools(&self) -> Vec<ToolBox> {
-        use agents_toolkit::create_todos_tools;
-        create_todos_tools()
+        // Match LangChain deepagents: expose the planning tool `write_todos` as the built-in.
+        // (We keep `read_todos` available in the toolkit for opt-in use, but it is not a
+        // default built-in tool.)
+        use agents_toolkit::create_todos_tool;
+        vec![create_todos_tool()]
     }
 
     async fn modify_model_request(&self, ctx: &mut MiddlewareContext<'_>) -> anyhow::Result<()> {

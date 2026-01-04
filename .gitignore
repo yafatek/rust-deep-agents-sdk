@@ -6,6 +6,7 @@
 # Rust tooling
 **/*.rs.bk
 /.cargo/
+.cargo-target/
 # Package managers & metadata
 node_modules/
 

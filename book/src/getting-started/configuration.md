@@ -111,13 +111,11 @@ let model = Arc::new(GeminiChatModel::new(config)?);
 Enable specific built-in tools:
 
 ```rust
-use std::collections::HashSet;
-
-let mut builtins = HashSet::new();
-builtins.insert("filesystem".to_string());
-builtins.insert("todos".to_string());
-
-.with_builtin_tools(builtins)
+// Limit which built-in tools are exposed.
+// Built-ins are selected by *tool name* (same names as in LangChain deepagents):
+// - write_todos
+// - ls, read_file, write_file, edit_file
+.with_builtin_tools(["write_todos", "ls", "read_file", "write_file", "edit_file"])
 ```
 
 ## State Persistence

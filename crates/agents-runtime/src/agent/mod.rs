@@ -16,3 +16,6 @@ pub use api::{create_async_deep_agent, create_deep_agent, get_default_model};
 pub use builder::ConfigurableAgentBuilder;
 pub use config::{CreateDeepAgentParams, DeepAgentConfig, SubAgentConfig, SummarizationConfig};
 pub use runtime::DeepAgent;
+
+#[cfg(test)]
+mod builtin_tools_parity_tests;

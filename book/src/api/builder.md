@@ -76,7 +76,10 @@ Add multiple tools.
 ### with_builtin_tools
 
 ```rust
-pub fn with_builtin_tools(self, tools: HashSet<String>) -> Self
+pub fn with_builtin_tools<I, S>(self, names: I) -> Self
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>
 ```
 
 Enable specific built-in tools.

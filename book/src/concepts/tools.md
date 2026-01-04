@@ -284,16 +284,15 @@ The SDK includes optional built-in tools:
 ### Filesystem Tools
 
 ```rust
-let mut builtins = HashSet::new();
-builtins.insert("filesystem".to_string());
-
-.with_builtin_tools(builtins)
+// Enable filesystem tools by *tool name*
+.with_builtin_tools(["ls", "read_file", "write_file", "edit_file"])
 ```
 
 ### Todo Management
 
 ```rust
-builtins.insert("todos".to_string());
+// Enable the planning tool by *tool name*
+.with_builtin_tools(["write_todos"])
 ```
 
 ## Tool Debugging
