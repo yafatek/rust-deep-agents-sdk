@@ -45,10 +45,14 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
 ### Using Factory Functions
 
 ```rust
-use agents_sdk::{create_deep_agent, get_default_model};
+use agents_sdk::{create_deep_agent, get_default_model, CreateDeepAgentParams};
 
 let model = get_default_model()?;
-let agent = create_deep_agent("You are a helpful assistant.", model)?;
+let agent = create_deep_agent(CreateDeepAgentParams {
+    instructions: "You are a helpful assistant.".to_string(),
+    model: Some(model),
+    ..Default::default()
+})?;
 ```
 
 ## Agent Lifecycle
