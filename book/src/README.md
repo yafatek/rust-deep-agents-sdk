@@ -133,14 +133,14 @@ Arc::new(DynamoDbCheckpointer::new("table-name").await?)
 ### Human-in-the-Loop Workflows
 
 ```rust
-let mut policies = HashMap::new();
-policies.insert("delete_file".to_string(), HitlPolicy {
-    allow_auto: false,
-    note: Some("Requires approval".to_string()),
-});
-
+// Add HITL policies one at a time using with_tool_interrupt()
 let agent = ConfigurableAgentBuilder::new("You are an assistant")
-    .with_tool_interrupts(policies)
+    .with_model(model)
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("Requires approval".to_string()),
+    })
+    .with_checkpointer(checkpointer)
     .build()?;
 ```
 

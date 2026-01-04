@@ -14,18 +14,14 @@ HITL is essential for:
 
 ```rust
 use agents_sdk::{ConfigurableAgentBuilder, HitlPolicy};
-use std::collections::HashMap;
-
-let mut policies = HashMap::new();
-policies.insert("delete_file".to_string(), HitlPolicy {
-    allow_auto: false,
-    note: Some("File deletion requires approval".to_string()),
-});
 
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
     .with_model(model)
     .with_tool(DeleteFileTool::as_tool())
-    .with_tool_interrupts(policies)
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("File deletion requires approval".to_string()),
+    })
     .with_checkpointer(checkpointer)  // Required for HITL
     .build()?;
 ```
@@ -53,6 +49,27 @@ HitlPolicy {
     allow_auto: true,
     note: None,
 }
+```
+
+## Adding Multiple HITL Policies
+
+Use `with_tool_interrupt()` once per tool:
+
+```rust
+let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
+    .with_model(model)
+    .with_tool(DeleteFileTool::as_tool())
+    .with_tool(SendEmailTool::as_tool())
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("File deletion is irreversible".to_string()),
+    })
+    .with_tool_interrupt("send_email", HitlPolicy {
+        allow_auto: false,
+        note: Some("External communication requires review".to_string()),
+    })
+    .with_checkpointer(checkpointer)
+    .build()?;
 ```
 
 ## Workflow
@@ -151,7 +168,6 @@ use agents_sdk::{
     persistence::InMemoryCheckpointer,
     hitl::HitlAction,
 };
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::io::{self, Write};
 
@@ -194,17 +210,6 @@ async fn main() -> anyhow::Result<()> {
         OpenAiConfig::new(api_key, "gpt-4o-mini")
     )?);
 
-    // Define HITL policies
-    let mut policies = HashMap::new();
-    policies.insert("delete_file".to_string(), HitlPolicy {
-        allow_auto: false,
-        note: Some("File deletion is irreversible".to_string()),
-    });
-    policies.insert("send_email".to_string(), HitlPolicy {
-        allow_auto: false,
-        note: Some("External communication requires review".to_string()),
-    });
-
     let checkpointer = Arc::new(InMemoryCheckpointer::new());
 
     let agent = ConfigurableAgentBuilder::new(
@@ -215,7 +220,15 @@ async fn main() -> anyhow::Result<()> {
         DeleteFileTool::as_tool(),
         SendEmailTool::as_tool(),
     ])
-    .with_tool_interrupts(policies)
+    // Add HITL policies one at a time
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("File deletion is irreversible".to_string()),
+    })
+    .with_tool_interrupt("send_email", HitlPolicy {
+        allow_auto: false,
+        note: Some("External communication requires review".to_string()),
+    })
     .with_checkpointer(checkpointer)
     .build()?;
 
@@ -346,13 +359,18 @@ let protected_tools = vec![
     "update_production",
 ];
 
-let mut policies = HashMap::new();
+// Add a policy for each protected tool
+let mut builder = ConfigurableAgentBuilder::new("...")
+    .with_model(model);
+
 for tool in protected_tools {
-    policies.insert(tool.to_string(), HitlPolicy {
+    builder = builder.with_tool_interrupt(tool, HitlPolicy {
         allow_auto: false,
         note: Some(format!("{} requires human approval", tool)),
     });
 }
+
+let agent = builder.with_checkpointer(checkpointer).build()?;
 ```
 
 ### 2. Provide Clear Context
@@ -388,6 +406,6 @@ async fn wait_for_approval(timeout_secs: u64) -> Option<bool> {
 ```rust
 // HITL requires state persistence
 .with_checkpointer(checkpointer)  // Required!
-.with_tool_interrupts(policies)
+.with_tool_interrupt("tool", policy)
 ```
 

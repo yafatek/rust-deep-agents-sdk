@@ -323,9 +323,10 @@ policies.insert(
     }
 );
 
+// Use with_tool_interrupt() for each tool requiring approval
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
     .with_model(model)
-    .with_tool_interrupts(policies)
+    .with_tool_interrupt("delete_file", policies.get("delete_file").unwrap().clone())
     .with_checkpointer(checkpointer)
     .build()?;
 
@@ -413,24 +414,22 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
 ```rust
 use agents_sdk::{ConfigurableAgentBuilder, SubAgentConfig};
 
-let researcher = SubAgentConfig {
-    name: "researcher".to_string(),
-    description: "Searches and analyzes information".to_string(),
-    instructions: "You are a research specialist.".to_string(),
-    tools: vec![],
-};
+let researcher = SubAgentConfig::new(
+    "researcher",
+    "Searches and analyzes information",
+    "You are a research specialist.",
+);
 
-let writer = SubAgentConfig {
-    name: "writer".to_string(),
-    description: "Creates well-written content".to_string(),
-    instructions: "You are a content writer.".to_string(),
-    tools: vec![],
-};
+let writer = SubAgentConfig::new(
+    "writer",
+    "Creates well-written content",
+    "You are a content writer.",
+);
 
+// Use with_subagent_config() to add sub-agents
 let agent = ConfigurableAgentBuilder::new("You are a project coordinator.")
     .with_model(model)
-    .with_subagent(researcher)
-    .with_subagent(writer)
+    .with_subagent_config([researcher, writer])
     .with_auto_general_purpose(true)
     .build()?;
 ```

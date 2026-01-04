@@ -108,7 +108,9 @@ async fn main() -> anyhow::Result<()> {
         ExecuteTradeTool::as_tool(),
         GetBalanceTool::as_tool(),
     ])
-    .with_tool_interrupts(policies)
+    // Add HITL policies one at a time using with_tool_interrupt()
+    .with_tool_interrupt("transfer_funds", policies.get("transfer_funds").unwrap().clone())
+    .with_tool_interrupt("execute_trade", policies.get("execute_trade").unwrap().clone())
     .with_checkpointer(checkpointer)
     .build()?;
     

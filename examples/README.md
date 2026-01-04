@@ -73,7 +73,7 @@ Complex research agent with file operations and specialized subagents.
 | **Basic Creation** | `create_deep_agent(tools, instructions)` | `create_deep_agent(CreateDeepAgentParams { tools, instructions, .. })` |
 | **Builder Pattern** | N/A | `ConfigurableAgentBuilder::new(instructions).with_*().build()` |
 | **Model Selection** | `model=ChatAnthropic(...)` | `.with_model(Arc::new(AnthropicMessagesModel::new(...)))` |
-| **Subagents** | `subagents=[{name, description, prompt, tools}]` | `.with_subagent_config([SubAgentConfig { name, description, instructions, tools }])` |
+| **Subagents** | `subagents=[{name, description, prompt, tools}]` | `.with_subagent_config([SubAgentConfig::new(name, description, instructions).with_tools(tools)])` |
 | **HITL** | `tool_configs={"tool": True}` | `.with_tool_interrupt("tool", HitlPolicy { allow_auto: false, .. })` |
 | **State Persistence** | `checkpointer=InMemorySaver()` | `.with_checkpointer(Arc::new(InMemoryCheckpointer::new()))` |
 | **Message Handling** | `agent.invoke({"messages": [...]})` | `agent.handle_message("text", state).await` |

@@ -83,7 +83,7 @@ A built-in `task` tool enables agents to spawn specialized subagents for context
 The SDK makes this simple:
 
 ```rust
-// Define specialized sub-agents
+// Define specialized sub-agents using SubAgentConfig::new()
 let research_agent = SubAgentConfig::new(
     "researcher",
     "research-agent", 
@@ -98,10 +98,10 @@ let analysis_agent = SubAgentConfig::new(
 )
 .with_tools(vec![CalculateTool::as_tool(), CompareTool::as_tool()]);
 
-// Main agent orchestrates sub-agents
+// Main agent orchestrates sub-agents using with_subagent_config()
 let agent = ConfigurableAgentBuilder::new(orchestrator_prompt)
     .with_model(model)
-    .with_subagent_config(vec![research_agent, analysis_agent])
+    .with_subagent_config([research_agent, analysis_agent])
     .build()?;
 ```
 
@@ -191,7 +191,7 @@ let analysis_agent = SubAgentConfig::new(
     CompareCompaniesTool::as_tool(),
 ]);
 
-// Main orchestrator
+// Main orchestrator using with_subagent_config()
 let agent = ConfigurableAgentBuilder::new(
     "You are an investment research coordinator.
      
@@ -203,7 +203,7 @@ let agent = ConfigurableAgentBuilder::new(
      5. Provide a clear recommendation with confidence level"
 )
 .with_model(model)
-.with_subagent_config(vec![research_agent, analysis_agent])
+.with_subagent_config([research_agent, analysis_agent])
 .with_checkpointer(checkpointer)
 .with_token_tracking(true)
 .build()?;

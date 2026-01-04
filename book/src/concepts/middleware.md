@@ -73,20 +73,21 @@ Redacts:
 
 ### HITL (Human-in-the-Loop) Middleware
 
-Requires approval for specific tools:
+Requires approval for specific tools using `with_tool_interrupt()`:
 
 ```rust
 use agents_sdk::HitlPolicy;
-use std::collections::HashMap;
-
-let mut policies = HashMap::new();
-policies.insert("delete_file".to_string(), HitlPolicy {
-    allow_auto: false,
-    note: Some("File deletion requires approval".to_string()),
-});
 
 let agent = ConfigurableAgentBuilder::new("...")
-    .with_tool_interrupts(policies)
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("File deletion requires approval".to_string()),
+    })
+    .with_tool_interrupt("send_email", HitlPolicy {
+        allow_auto: false,
+        note: Some("Email requires review".to_string()),
+    })
+    .with_checkpointer(checkpointer)
     .build()?;
 ```
 
@@ -261,9 +262,9 @@ Middleware executes in the order added:
 ```rust
 // Order matters: First added = first to process request
 let agent = ConfigurableAgentBuilder::new("...")
-    .with_pii_sanitization(true)      // 1. First: sanitize input
-    .with_token_tracking(true)         // 2. Second: track usage
-    .with_tool_interrupts(policies)    // 3. Third: check approvals
+    .with_pii_sanitization(true)              // 1. First: sanitize input
+    .with_token_tracking(true)                // 2. Second: track usage
+    .with_tool_interrupt("tool", policy)      // 3. Third: check approvals
     .build()?;
 ```
 

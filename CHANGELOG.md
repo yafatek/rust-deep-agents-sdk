@@ -259,8 +259,12 @@ policies.insert("dangerous_tool".to_string(), HitlPolicy {
     note: Some("Requires approval".to_string()),
 });
 
+// Use with_tool_interrupt() for each tool requiring approval
 let agent = ConfigurableAgentBuilder::new("instructions")
-    .with_tool_interrupts(policies)
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("Requires approval".to_string()),
+    })
     .with_checkpointer(checkpointer)  // Required!
     .build()?;
 ```

@@ -108,13 +108,38 @@ let agent = ConfigurableAgentBuilder::new("Persistent assistant")
 ### With HITL
 
 ```rust
-let mut policies = HashMap::new();
-policies.insert("delete".to_string(), HitlPolicy { allow_auto: false, note: None });
-
+// Use with_tool_interrupt() for each tool requiring approval
 let agent = ConfigurableAgentBuilder::new("Safe assistant")
     .with_model(model)
-    .with_tool_interrupts(policies)
+    .with_tool_interrupt("delete", HitlPolicy { 
+        allow_auto: false, 
+        note: Some("Requires approval".to_string()),
+    })
     .with_checkpointer(checkpointer)
+    .build()?;
+```
+
+### With Sub-Agents
+
+```rust
+use agents_sdk::SubAgentConfig;
+
+let researcher = SubAgentConfig::new(
+    "researcher",
+    "Researches topics",
+    "You are a research specialist.",
+);
+
+let writer = SubAgentConfig::new(
+    "writer",
+    "Writes content",
+    "You are a content writer.",
+);
+
+// Use with_subagent_config() to add sub-agents
+let agent = ConfigurableAgentBuilder::new("You are a coordinator.")
+    .with_model(model)
+    .with_subagent_config([researcher, writer])
     .build()?;
 ```
 

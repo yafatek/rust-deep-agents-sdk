@@ -12,8 +12,8 @@ let agent = ConfigurableAgentBuilder::new("Your agent instructions")
     .with_tool(tool)                      // Optional: Add tools
     .with_checkpointer(checkpointer)      // Optional: State persistence
     .with_token_tracking_config(config)   // Optional: Cost monitoring
-    .with_tool_interrupts(policies)       // Optional: HITL workflows
-    .with_subagent(subagent)              // Optional: Task delegation
+    .with_tool_interrupt("tool", policy)  // Optional: HITL workflows
+    .with_subagent_config([subagent])     // Optional: Task delegation
     .with_prompt_format(format)           // Optional: TOON/JSON
     .with_max_iterations(10)              // Optional: Loop limit
     .build()?;
@@ -182,40 +182,43 @@ Or simple enable:
 
 ## Human-in-the-Loop (HITL)
 
-Require approval for specific tools:
+Require approval for specific tools using `with_tool_interrupt()`:
 
 ```rust
 use agents_sdk::HitlPolicy;
-use std::collections::HashMap;
 
-let mut policies = HashMap::new();
-policies.insert("delete_file".to_string(), HitlPolicy {
+// Add one interrupt at a time
+.with_tool_interrupt("delete_file", HitlPolicy {
     allow_auto: false,
     note: Some("Deletion requires human approval".to_string()),
-});
-policies.insert("send_email".to_string(), HitlPolicy {
+})
+.with_tool_interrupt("send_email", HitlPolicy {
     allow_auto: false,
     note: Some("Email sending requires review".to_string()),
-});
-
-.with_tool_interrupts(policies)
+})
 ```
 
 ## Sub-Agents
 
-Delegate tasks to specialized agents:
+Delegate tasks to specialized agents using `with_subagent_config()`:
 
 ```rust
 use agents_sdk::SubAgentConfig;
 
-let researcher = SubAgentConfig {
-    name: "researcher".to_string(),
-    description: "Searches and analyzes information".to_string(),
-    instructions: "You are a research specialist.".to_string(),
-    tools: vec![],
-};
+let researcher = SubAgentConfig::new(
+    "researcher",
+    "Searches and analyzes information",
+    "You are a research specialist.",
+);
 
-.with_subagent(researcher)
+let writer = SubAgentConfig::new(
+    "writer", 
+    "Creates well-written content",
+    "You are a content writer.",
+);
+
+// Pass an array or vec of SubAgentConfig
+.with_subagent_config([researcher, writer])
 .with_auto_general_purpose(true)  // Add default general assistant
 ```
 
@@ -227,8 +230,8 @@ Handle long conversations:
 use agents_sdk::SummarizationConfig;
 
 let summarization = SummarizationConfig {
-    max_messages: 50,
-    summary_prompt: "Summarize the key points of this conversation.".to_string(),
+    messages_to_keep: 50,
+    summary_note: "Summarize the key points of this conversation.".to_string(),
 };
 
 .with_summarization(summarization)
@@ -294,7 +297,6 @@ use agents_sdk::{
     PromptFormat,
     persistence::InMemoryCheckpointer,
 };
-use std::collections::HashMap;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -302,12 +304,6 @@ async fn main() -> anyhow::Result<()> {
     let model = Arc::new(OpenAiChatModel::new(
         OpenAiConfig::new(std::env::var("OPENAI_API_KEY")?, "gpt-4o-mini")
     )?);
-
-    let mut hitl_policies = HashMap::new();
-    hitl_policies.insert("dangerous_action".to_string(), HitlPolicy {
-        allow_auto: false,
-        note: Some("Requires approval".to_string()),
-    });
 
     let agent = ConfigurableAgentBuilder::new(
         "You are a production-ready assistant with full capabilities."
@@ -329,16 +325,20 @@ async fn main() -> anyhow::Result<()> {
         custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
     })
     
-    // HITL
-    .with_tool_interrupts(hitl_policies)
-    
-    // Sub-agents
-    .with_subagent(SubAgentConfig {
-        name: "specialist".to_string(),
-        description: "Domain expert".to_string(),
-        instructions: "You specialize in technical analysis.".to_string(),
-        tools: vec![],
+    // HITL - add one at a time
+    .with_tool_interrupt("dangerous_action", HitlPolicy {
+        allow_auto: false,
+        note: Some("Requires approval".to_string()),
     })
+    
+    // Sub-agents - pass array or vec to with_subagent_config
+    .with_subagent_config([
+        SubAgentConfig::new(
+            "specialist",
+            "Domain expert",
+            "You specialize in technical analysis.",
+        ),
+    ])
     
     // Format and safety
     .with_prompt_format(PromptFormat::Toon)

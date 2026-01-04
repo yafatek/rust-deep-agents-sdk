@@ -131,16 +131,31 @@ Add multiple broadcasters.
 
 ## HITL (Human-in-the-Loop)
 
-### with_tool_interrupts
+### with_tool_interrupt
 
 ```rust
-pub fn with_tool_interrupts(
+pub fn with_tool_interrupt(
     self,
-    policies: HashMap<String, HitlPolicy>
+    tool_name: impl Into<String>,
+    policy: HitlPolicy
 ) -> Self
 ```
 
-Set tools requiring approval.
+Set a tool to require approval. Call multiple times for multiple tools.
+
+```rust
+let agent = ConfigurableAgentBuilder::new("...")
+    .with_model(model)
+    .with_tool_interrupt("delete_file", HitlPolicy {
+        allow_auto: false,
+        note: Some("Deletion requires approval".to_string()),
+    })
+    .with_tool_interrupt("send_email", HitlPolicy {
+        allow_auto: false,
+        note: Some("Email requires review".to_string()),
+    })
+    .build()?;
+```
 
 ## Token Tracking
 
@@ -165,13 +180,36 @@ Full configuration.
 
 ## Sub-Agents
 
-### with_subagent
+### with_subagent_config
 
 ```rust
-pub fn with_subagent(self, config: SubAgentConfig) -> Self
+pub fn with_subagent_config<I>(self, configs: I) -> Self
+where
+    I: IntoIterator<Item = SubAgentConfig>
 ```
 
-Add a sub-agent.
+Add sub-agent configurations. Accepts any iterable (single config, vec, array).
+
+```rust
+// Single sub-agent
+.with_subagent_config([researcher])
+
+// Multiple sub-agents
+.with_subagent_config([researcher, writer, analyst])
+
+// Or using a Vec
+.with_subagent_config(vec![researcher, writer])
+```
+
+### with_subagent_tools
+
+```rust
+pub fn with_subagent_tools<I>(self, tools: I) -> Self
+where
+    I: IntoIterator<Item = ToolBox>
+```
+
+Convenience method: auto-create sub-agents from tools. Each tool becomes a specialized sub-agent.
 
 ### with_auto_general_purpose
 
@@ -179,7 +217,7 @@ Add a sub-agent.
 pub fn with_auto_general_purpose(self, enabled: bool) -> Self
 ```
 
-Add default general assistant.
+Add default general assistant (default: true).
 
 ## Summarization
 
@@ -232,7 +270,7 @@ Build the agent.
 ### build_async
 
 ```rust
-pub async fn build_async(self) -> anyhow::Result<DeepAgent>
+pub fn build_async(self) -> anyhow::Result<DeepAgent>
 ```
 
 Build with async initialization.
@@ -240,6 +278,15 @@ Build with async initialization.
 ## Complete Example
 
 ```rust
+use agents_sdk::{
+    ConfigurableAgentBuilder,
+    SubAgentConfig,
+    HitlPolicy,
+    TokenTrackingConfig,
+    TokenCosts,
+    PromptFormat,
+};
+
 let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
     // Model
     .with_model(model)
@@ -260,12 +307,21 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant.")
     .with_token_tracking_config(TokenTrackingConfig {
         enabled: true,
         emit_events: true,
+        log_usage: true,
         custom_costs: Some(TokenCosts::openai_gpt4o_mini()),
-        ..Default::default()
     })
     
-    // HITL
-    .with_tool_interrupts(policies)
+    // HITL - call once per tool
+    .with_tool_interrupt("dangerous_action", HitlPolicy {
+        allow_auto: false,
+        note: Some("Requires approval".to_string()),
+    })
+    
+    // Sub-agents
+    .with_subagent_config([
+        SubAgentConfig::new("researcher", "Researches topics", "You research."),
+        SubAgentConfig::new("writer", "Writes content", "You write."),
+    ])
     
     // Format
     .with_prompt_format(PromptFormat::Toon)

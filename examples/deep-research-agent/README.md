@@ -73,12 +73,12 @@ This example demonstrates the core **Deep Agent** concepts:
 ### 🎯 **Delegation**
 ```rust
 // Main agent delegates to specialized subagents
-let research_subagent = SubAgentConfig {
-    name: "research-agent".to_string(),
-    description: "Specialized researcher for deep research...",
-    tools: Some(vec![internet_search.clone()]),
-    // ...
-};
+let research_subagent = SubAgentConfig::new(
+    "research-agent",
+    "Specialized researcher for deep research...",
+    "You are a research specialist. Search thoroughly and cite sources.",
+)
+.with_tools(vec![internet_search.clone()]);
 ```
 
 ### 🔧 **Tool Specialization**

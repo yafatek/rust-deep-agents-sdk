@@ -15,37 +15,55 @@ Sub-agents enable:
 ```rust
 use agents_sdk::{ConfigurableAgentBuilder, SubAgentConfig};
 
-let researcher = SubAgentConfig {
-    name: "researcher".to_string(),
-    description: "Searches and analyzes information".to_string(),
-    instructions: "You are a research specialist. Find accurate information.".to_string(),
-    tools: vec![],  // Can have its own tools
-};
+let researcher = SubAgentConfig::new(
+    "researcher",
+    "Searches and analyzes information",
+    "You are a research specialist. Find accurate information.",
+);
 
-let writer = SubAgentConfig {
-    name: "writer".to_string(),
-    description: "Creates well-written content".to_string(),
-    instructions: "You are a content writer. Write clearly and engagingly.".to_string(),
-    tools: vec![],
-};
+let writer = SubAgentConfig::new(
+    "writer",
+    "Creates well-written content",
+    "You are a content writer. Write clearly and engagingly.",
+);
 
 let agent = ConfigurableAgentBuilder::new("You are a project coordinator.")
     .with_model(model)
-    .with_subagent(researcher)
-    .with_subagent(writer)
+    .with_subagent_config([researcher, writer])
     .build()?;
 ```
 
 ## SubAgentConfig
 
+Create sub-agent configurations using the builder pattern:
+
 ```rust
-pub struct SubAgentConfig {
-    pub name: String,           // Unique identifier
-    pub description: String,    // What this agent does (shown to parent)
-    pub instructions: String,   // System prompt for the sub-agent
-    pub tools: Vec<ToolBox>,    // Tools available to this sub-agent
-}
+// Required fields via constructor
+let config = SubAgentConfig::new(
+    "name",           // Unique identifier
+    "description",    // What this agent does (shown to parent)
+    "instructions",   // System prompt for the sub-agent
+);
+
+// Optional: Add tools
+let config = SubAgentConfig::new("researcher", "Researches topics", "You are a researcher.")
+    .with_tools(vec![SearchTool::as_tool()]);
+
+// Optional: Set a different model
+let config = SubAgentConfig::new("analyst", "Analyzes data", "You are an analyst.")
+    .with_model(claude_model)
+    .with_tools(vec![AnalyzeTool::as_tool()]);
 ```
+
+### Available Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `new(name, description, instructions)` | Create with required fields |
+| `.with_tools(Vec<ToolBox>)` | Add tools available to this sub-agent |
+| `.with_model(Arc<dyn LanguageModel>)` | Override the LLM (defaults to parent's model) |
+| `.with_builtin_tools(HashSet<String>)` | Enable specific built-in tools |
+| `.with_prompt_caching(bool)` | Enable prompt caching |
 
 ## How It Works
 
@@ -106,15 +124,15 @@ async fn paper_search(query: String) -> String {
     format!("Papers about: {}", query)
 }
 
-let researcher = SubAgentConfig {
-    name: "researcher".to_string(),
-    description: "Searches web and academic sources".to_string(),
-    instructions: "You are a research specialist with access to web and academic search.".to_string(),
-    tools: vec![
-        WebSearchTool::as_tool(),
-        PaperSearchTool::as_tool(),
-    ],
-};
+let researcher = SubAgentConfig::new(
+    "researcher",
+    "Searches web and academic sources",
+    "You are a research specialist with access to web and academic search.",
+)
+.with_tools(vec![
+    WebSearchTool::as_tool(),
+    PaperSearchTool::as_tool(),
+]);
 ```
 
 ## Auto General Purpose
@@ -124,7 +142,7 @@ Add a default general-purpose sub-agent:
 ```rust
 let agent = ConfigurableAgentBuilder::new("You are a coordinator.")
     .with_model(model)
-    .with_subagent(specialist)
+    .with_subagent_config([specialist])
     .with_auto_general_purpose(true)  // Adds default assistant
     .build()?;
 ```
@@ -168,41 +186,41 @@ async fn main() -> anyhow::Result<()> {
     )?);
 
     // Create specialized sub-agents
-    let researcher = SubAgentConfig {
-        name: "researcher".to_string(),
-        description: "Searches and analyzes information from the web".to_string(),
-        instructions: r#"
+    let researcher = SubAgentConfig::new(
+        "researcher",
+        "Searches and analyzes information from the web",
+        r#"
             You are a research specialist. Your job is to:
             - Find accurate, relevant information
             - Cite sources when possible
             - Summarize findings clearly
-        "#.to_string(),
-        tools: vec![WebSearchTool::as_tool()],
-    };
+        "#,
+    )
+    .with_tools(vec![WebSearchTool::as_tool()]);
 
-    let writer = SubAgentConfig {
-        name: "writer".to_string(),
-        description: "Creates well-written, engaging content".to_string(),
-        instructions: r#"
+    let writer = SubAgentConfig::new(
+        "writer",
+        "Creates well-written, engaging content",
+        r#"
             You are a professional content writer. Your job is to:
             - Write clear, engaging content
             - Adapt tone to the audience
             - Ensure proper grammar and style
-        "#.to_string(),
-        tools: vec![GrammarCheckTool::as_tool()],
-    };
+        "#,
+    )
+    .with_tools(vec![GrammarCheckTool::as_tool()]);
 
-    let developer = SubAgentConfig {
-        name: "developer".to_string(),
-        description: "Writes and tests Rust code".to_string(),
-        instructions: r#"
+    let developer = SubAgentConfig::new(
+        "developer",
+        "Writes and tests Rust code",
+        r#"
             You are a Rust developer. Your job is to:
             - Write clean, idiomatic Rust code
             - Test code before presenting
             - Explain code clearly
-        "#.to_string(),
-        tools: vec![RunRustTool::as_tool()],
-    };
+        "#,
+    )
+    .with_tools(vec![RunRustTool::as_tool()]);
 
     // Create coordinator agent
     let coordinator = ConfigurableAgentBuilder::new(r#"
@@ -214,9 +232,7 @@ async fn main() -> anyhow::Result<()> {
         Delegate tasks to the appropriate specialist and synthesize their outputs.
     "#)
     .with_model(model)
-    .with_subagent(researcher)
-    .with_subagent(writer)
-    .with_subagent(developer)
+    .with_subagent_config([researcher, writer, developer])
     .build()?;
 
     // Complex task requiring multiple specialists
@@ -239,16 +255,15 @@ async fn main() -> anyhow::Result<()> {
 ```rust
 // Level 1: Project Manager
 let project_manager = ConfigurableAgentBuilder::new("You manage projects.")
-    .with_subagent(team_lead)
+    .with_subagent_config([team_lead])
     .build()?;
 
 // Level 2: Team Lead (itself has sub-agents)
-let team_lead = SubAgentConfig {
-    name: "team_lead".to_string(),
-    description: "Manages development team".to_string(),
-    instructions: "You coordinate developers.".to_string(),
-    tools: vec![],  // Would have its own sub-agents in full implementation
-};
+let team_lead = SubAgentConfig::new(
+    "team_lead",
+    "Manages development team",
+    "You coordinate developers.",
+);
 ```
 
 ### Parallel Execution
@@ -263,7 +278,7 @@ let coordinator = ConfigurableAgentBuilder::new(r#"
     2. Delegate each to the researcher
     3. Synthesize the results
 "#)
-.with_subagent(researcher)
+.with_subagent_config([researcher])
 .build()?;
 ```
 
@@ -272,31 +287,37 @@ let coordinator = ConfigurableAgentBuilder::new(r#"
 ```rust
 // Pipeline: Research → Analyze → Write → Edit
 let pipeline_agents = vec![
-    SubAgentConfig {
-        name: "researcher".to_string(),
-        description: "Gathers raw information".to_string(),
-        instructions: "Find relevant data and sources.".to_string(),
-        tools: vec![SearchTool::as_tool()],
-    },
-    SubAgentConfig {
-        name: "analyst".to_string(),
-        description: "Analyzes and structures data".to_string(),
-        instructions: "Analyze data and identify key insights.".to_string(),
-        tools: vec![],
-    },
-    SubAgentConfig {
-        name: "writer".to_string(),
-        description: "Writes initial draft".to_string(),
-        instructions: "Write clear, structured content.".to_string(),
-        tools: vec![],
-    },
-    SubAgentConfig {
-        name: "editor".to_string(),
-        description: "Polishes and refines content".to_string(),
-        instructions: "Improve clarity, fix errors, enhance flow.".to_string(),
-        tools: vec![GrammarTool::as_tool()],
-    },
+    SubAgentConfig::new(
+        "researcher",
+        "Gathers raw information",
+        "Find relevant data and sources.",
+    )
+    .with_tools(vec![SearchTool::as_tool()]),
+    
+    SubAgentConfig::new(
+        "analyst",
+        "Analyzes and structures data",
+        "Analyze data and identify key insights.",
+    ),
+    
+    SubAgentConfig::new(
+        "writer",
+        "Writes initial draft",
+        "Write clear, structured content.",
+    ),
+    
+    SubAgentConfig::new(
+        "editor",
+        "Polishes and refines content",
+        "Improve clarity, fix errors, enhance flow.",
+    )
+    .with_tools(vec![GrammarTool::as_tool()]),
 ];
+
+let agent = ConfigurableAgentBuilder::new("You coordinate the pipeline.")
+    .with_model(model)
+    .with_subagent_config(pipeline_agents)
+    .build()?;
 ```
 
 ## Best Practices
@@ -305,20 +326,18 @@ let pipeline_agents = vec![
 
 ```rust
 // Good: Clear, focused purpose
-SubAgentConfig {
-    name: "code_reviewer".to_string(),
-    description: "Reviews code for bugs, style issues, and best practices".to_string(),
-    instructions: "You are a senior code reviewer...".to_string(),
-    tools: vec![],
-}
+SubAgentConfig::new(
+    "code_reviewer",
+    "Reviews code for bugs, style issues, and best practices",
+    "You are a senior code reviewer...",
+)
 
 // Bad: Too broad
-SubAgentConfig {
-    name: "helper".to_string(),
-    description: "Helps with stuff".to_string(),
-    instructions: "Help the user".to_string(),
-    tools: vec![],
-}
+SubAgentConfig::new(
+    "helper",
+    "Helps with stuff",
+    "Help the user",
+)
 ```
 
 ### 2. Descriptive Names
@@ -335,15 +354,11 @@ SubAgentConfig {
 
 ```rust
 // Give each sub-agent only the tools it needs
-let researcher = SubAgentConfig {
-    tools: vec![SearchTool::as_tool()],  // Only search
-    ..
-};
+let researcher = SubAgentConfig::new("researcher", "Searches", "...")
+    .with_tools(vec![SearchTool::as_tool()]);  // Only search
 
-let writer = SubAgentConfig {
-    tools: vec![GrammarTool::as_tool()],  // Only writing tools
-    ..
-};
+let writer = SubAgentConfig::new("writer", "Writes", "...")
+    .with_tools(vec![GrammarTool::as_tool()]);  // Only writing tools
 ```
 
 ### 4. Clear Coordinator Instructions
