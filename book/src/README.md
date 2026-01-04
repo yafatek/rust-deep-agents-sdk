@@ -13,13 +13,35 @@
 
 ---
 
+## What are Deep Agents?
+
+**Deep Agents** represent an evolution beyond simple "shallow" agents that operate in basic ReAct (Reason + Act) loops. While shallow agents can handle straightforward tasks, they struggle with complex, multi-step workflows that require planning, delegation, and long-term memory.
+
+Deep Agents solve this by incorporating four key architectural components:
+
+| Component | Shallow Agents | Deep Agents |
+|-----------|---------------|-------------|
+| **System Prompts** | Basic instructions | Comprehensive behavioral frameworks |
+| **Planning** | None - reactive only | Structured task decomposition |
+| **Sub-Agents** | Single agent | Specialized agents for delegation |
+| **Memory** | Stateless or short-term | Persistent, contextual memory |
+
+This architecture enables agents to:
+- Break complex tasks into manageable subtasks
+- Delegate specialized work to expert sub-agents
+- Maintain context across long-running workflows
+- Plan and adapt strategies based on intermediate results
+
+> **Attribution**: The Deep Agents concept was introduced in ["Engineering Depth with Deep Agents"](https://medium.com/@anupam.0480/engineering-depth-with-deep-agents-41df1d33c7fa). This SDK brings that architecture to the Rust ecosystem.
+
 ## What is Deep Agents SDK?
 
-The **Rust Deep Agents SDK** is a high-performance framework for building AI agents that can:
+The **Rust Deep Agents SDK** is the first high-performance Rust implementation of the Deep Agents architecture. It enables you to build production-ready AI agents that can:
 
 - **Use tools** to interact with external systems (APIs, databases, file systems)
 - **Maintain state** across conversations with persistent memory
-- **Delegate tasks** to specialized sub-agents
+- **Delegate tasks** to specialized sub-agents for complex workflows
+- **Plan and reason** through multi-step problems
 - **Track costs** with built-in token usage monitoring
 - **Require approval** for critical operations via Human-in-the-Loop workflows
 - **Stream responses** in real-time for interactive applications

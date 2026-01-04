@@ -15,6 +15,7 @@
 
 # Core Concepts
 
+- [Understanding Deep Agents](./concepts/deep-agents.md)
 - [Agents](./concepts/agents.md)
 - [Tools](./concepts/tools.md)
 - [Messages](./concepts/messages.md)
