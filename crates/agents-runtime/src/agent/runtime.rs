@@ -677,13 +677,8 @@ impl DeepAgent {
                             Ok(tool_result_message) => {
                                 let content_preview = match &tool_result_message.content {
                                     MessageContent::Text(t) => {
-                                        if t.len() > 100 {
-                                            let truncated: String = t.chars().take(100).collect();
-                                            format!(
-                                                "{}... ({} chars)",
-                                                truncated,
-                                                t.chars().count()
-                                            )
+                                        if t.chars().count() > 100 {
+                                            format!("{:.100}... ({} chars)", t, t.chars().count())
                                         } else {
                                             t.clone()
                                         }

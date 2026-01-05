@@ -651,8 +651,8 @@ impl Tool for TaskRouterTool {
             let current_depth = self.get_delegation_depth();
 
             // Truncate instruction for event
-            let instruction_summary = if args.instruction.len() > 100 {
-                format!("{}...", &args.instruction[..100])
+            let instruction_summary = if args.instruction.chars().count() > 100 {
+                format!("{:.100}...", &args.instruction)
             } else {
                 args.instruction.clone()
             };
@@ -693,16 +693,16 @@ impl Tool for TaskRouterTool {
             // Create response preview
             let response_preview = match &response.content {
                 MessageContent::Text(t) => {
-                    if t.len() > 100 {
-                        format!("{}...", &t[..100])
+                    if t.chars().count() > 100 {
+                        format!("{:.100}...", t)
                     } else {
                         t.clone()
                     }
                 }
                 MessageContent::Json(v) => {
                     let json_str = v.to_string();
-                    if json_str.len() > 100 {
-                        format!("{}...", &json_str[..100])
+                    if json_str.chars().count() > 100 {
+                        format!("{:.100}...", json_str)
                     } else {
                         json_str
                     }

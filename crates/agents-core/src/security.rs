@@ -54,10 +54,10 @@ lazy_static::lazy_static! {
 /// assert!(truncated.ends_with("..."));
 /// ```
 pub fn truncate_string(text: &str, max_length: usize) -> String {
-    if text.len() <= max_length {
+    if text.chars().count() <= max_length {
         text.to_string()
     } else {
-        format!("{}...", &text[..max_length])
+        format!("{:.len$}...", text, len = max_length)
     }
 }
 
@@ -220,6 +220,25 @@ mod tests {
         let truncated = truncate_string(&text, 100);
         assert_eq!(truncated.len(), 100);
         assert!(!truncated.ends_with("..."));
+    }
+
+    // Unicode Tests: Edge Cases
+    #[test]
+    fn test_truncate_string_empty() {
+        let text = "";
+        assert_eq!(truncate_string(text, 10), "");
+        assert_eq!(truncate_string(text, 0), "");
+    }
+
+    #[test]
+    fn test_truncate_string_composite_emoji() {
+        // Family emoji: 👨‍👩‍👧‍👦
+        // chars().count() = 7: ['👨', '\u{200D}', '👩', '\u{200D}', '👧', '\u{200D}', '👦']
+        let family = "👨‍👩‍👧‍👦";
+        let result = truncate_string(family, 3);
+        // Will truncate at the ZWJ, producing incomplete emoji sequence
+        assert_eq!(result.chars().count(), 6); // 3 chars + "..."
+        assert!(result.starts_with("👨‍👩"));
     }
 
     #[test]
