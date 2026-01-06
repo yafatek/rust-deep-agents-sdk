@@ -21,6 +21,7 @@ agents-toolkit = { version = "0.0.29", path = "../agents-toolkit", optional = tr
 agents-macros = { version = "0.1.0", path = "../agents-macros", optional = true }
 agents-aws = { version = "0.0.29", path = "../agents-aws", optional = true }
 agents-persistence = { version = "0.0.29", path = "../agents-persistence", optional = true }
+agents-mcp = { version = "0.1.0", path = "../agents-mcp", optional = true }
 
 [features]
 # Default features - includes toolkit for a good out-of-box experience
@@ -29,6 +30,7 @@ default = ["toolkit"]
 # Individual feature flags
 toolkit = ["dep:agents-toolkit", "dep:agents-macros"]
 aws = ["dep:agents-aws"]
+mcp = ["dep:agents-mcp"]
 
 # Persistence backends
 redis = ["dep:agents-persistence", "agents-persistence/redis"]
@@ -40,7 +42,7 @@ persistence = ["redis", "postgres"]
 aws-full = ["aws", "dynamodb"]
 
 # Convenience feature for everything
-full = ["toolkit", "aws-full", "persistence"]
+full = ["toolkit", "aws-full", "persistence", "mcp"]
 
 [dev-dependencies]
 anyhow = { workspace = true }
