@@ -2,69 +2,85 @@
 
 ## Overview
 
-This document outlines the plan to add MCP support to the Rust Deep Agents SDK, enabling agents to use external MCP servers as tool providers.
+This document outlines the plan to add **native MCP support** to the Rust Deep Agents SDK, built **from scratch without external MCP dependencies**.
 
-## What is MCP?
+## Decision: Build From Scratch
 
-**Model Context Protocol (MCP)** is an open standard introduced by Anthropic in November 2024 to standardize how AI systems interact with external tools, data sources, and services. It provides:
+### Why Not Use External Crates?
 
-- **Universal Interface**: Standardized way for LLMs to call tools
-- **Transport Agnostic**: Works over stdio, HTTP/SSE, WebSocket
-- **Industry Adoption**: OpenAI, Google DeepMind, and Anthropic all support it
+| Concern | Details |
+|---------|---------|
+| **Maturity** | `rust-mcp-sdk` has ~133 stars, under heavy development |
+| **Breaking Changes** | External crates may introduce breaking changes |
+| **Dependency Bloat** | We only need client-side functionality |
+| **Control** | Full control over implementation and API design |
+| **Learning** | Community can learn from our implementation |
 
-### MCP Core Concepts
+### Our Approach
 
-| Concept | Description |
-|---------|-------------|
-| **Tools** | Functions that can be called by the AI model |
-| **Resources** | Data sources the AI can read (files, databases, etc.) |
-| **Prompts** | Pre-defined prompt templates |
-| **Sampling** | Request completions from the AI model |
+Build a minimal, focused MCP client implementation using only:
+- `serde` / `serde_json` (already in our deps)
+- `tokio` (already in our deps)
+- `tokio::process` for stdio transport
+- `reqwest` (optional, for HTTP transport)
 
-## Integration Goals
+## MCP Protocol Overview
 
-### Primary Goal
-Enable Deep Agents to **consume tools from MCP servers** as first-class tool providers.
+MCP is built on **JSON-RPC 2.0** with specific message types:
 
-```rust
-// Future API Vision
-let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
-    .with_model(model)
-    .with_mcp_server("npx @anthropic-ai/mcp-server-filesystem")  // MCP server
-    .with_mcp_server("http://localhost:8080/mcp")                 // HTTP MCP
-    .with_tool(MyCustomTool::as_tool())                          // Regular tools
-    .build()?;
+### Core Message Flow
+
+```
+┌──────────────┐                    ┌──────────────┐
+│   Agent      │                    │  MCP Server  │
+│  (Client)    │                    │              │
+└──────┬───────┘                    └──────┬───────┘
+       │                                   │
+       │──── initialize ─────────────────► │
+       │◄─── initialize result ─────────── │
+       │                                   │
+       │──── initialized ────────────────► │
+       │                                   │
+       │──── tools/list ─────────────────► │
+       │◄─── tools list ─────────────────  │
+       │                                   │
+       │──── tools/call ─────────────────► │
+       │◄─── tool result ────────────────  │
+       │                                   │
 ```
 
-### Secondary Goals
-1. Allow converting SDK tools to MCP-compatible format (exposing as MCP server)
-2. Support MCP resources and prompts
-3. Maintain backward compatibility with existing tool API
+### JSON-RPC Message Format
 
-## Candidate Crates
+```rust
+// Request
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+}
 
-### Option 1: `rust-mcp-sdk` (Recommended)
-- **Version**: 0.8.1
-- **Features**: Full MCP client & server, async/Tokio, multiple transports
-- **License**: MIT
-- **Pros**: Most complete, well-maintained, official ecosystem
-- **Cons**: Heavy feature set (but feature-gated)
-
-### Option 2: `rmcp-agent`
-- **Version**: 0.1.6  
-- **Features**: LangChain-style integration, tool conversion
-- **License**: MIT
-- **Pros**: Designed for agent frameworks like ours
-- **Cons**: Less mature, fewer features
-
-### Option 3: `mcp_client_rs`
-- **Version**: 0.1.7
-- **Features**: Client-only implementation
-- **License**: MIT
-- **Pros**: Lightweight
-- **Cons**: No server support, less active
-
-**Recommendation**: Use `rust-mcp-sdk` for the core protocol, potentially reference `rmcp-agent` for integration patterns.
+// Response
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "tools": [
+            {
+                "name": "read_file",
+                "description": "Read contents of a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" }
+                    },
+                    "required": ["path"]
+                }
+            }
+        ]
+    }
+}
+```
 
 ## Architecture Design
 
@@ -72,146 +88,480 @@ let agent = ConfigurableAgentBuilder::new("You are a helpful assistant")
 
 ```
 crates/
-├── agents-mcp/              # New crate
+├── agents-mcp/
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs
-│       ├── client.rs        # MCP client wrapper
-│       ├── tool_adapter.rs  # Convert MCP tools to SDK tools
-│       ├── server.rs        # Expose SDK as MCP server (future)
-│       └── transport.rs     # Transport configuration
+│       ├── lib.rs           # Public API exports
+│       ├── protocol/
+│       │   ├── mod.rs
+│       │   ├── messages.rs  # JSON-RPC message types
+│       │   ├── types.rs     # MCP-specific types (Tool, Resource, etc.)
+│       │   └── error.rs     # MCP error types
+│       ├── transport/
+│       │   ├── mod.rs
+│       │   ├── stdio.rs     # Stdio transport (subprocess)
+│       │   └── http.rs      # HTTP/SSE transport (optional)
+│       ├── client.rs        # MCP client implementation
+│       └── tool_adapter.rs  # Convert MCP tools to SDK ToolBox
 ```
 
-### Integration Points
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    DeepAgent                                 │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │  SDK Tools      │  │  MCP Tools      │                   │
-│  │  (ToolBox)      │  │  (McpToolBox)   │ ◄── NEW           │
-│  └────────┬────────┘  └────────┬────────┘                   │
-│           │                    │                             │
-│           ▼                    ▼                             │
-│  ┌─────────────────────────────────────────────────┐        │
-│  │              Unified Tool Registry              │        │
-│  │  - Native tools                                 │        │
-│  │  - MCP server tools (dynamically loaded)        │        │
-│  └─────────────────────────────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-        ┌─────────────────────────────────────┐
-        │         MCP Servers                  │
-        ├─────────────────────────────────────┤
-        │  - Filesystem server                 │
-        │  - Database server                   │
-        │  - Custom business logic servers     │
-        │  - Third-party integrations          │
-        └─────────────────────────────────────┘
-```
-
-### API Design
-
-#### Builder Extension
+### Core Types (What We Implement)
 
 ```rust
-impl ConfigurableAgentBuilder {
-    /// Add an MCP server via stdio (subprocess)
-    pub fn with_mcp_stdio(self, command: &str, args: &[&str]) -> Self
-    
-    /// Add an MCP server via HTTP/SSE
-    pub fn with_mcp_http(self, url: &str) -> Self
-    
-    /// Add an MCP server with full configuration
-    pub fn with_mcp_server(self, config: McpServerConfig) -> Self
-}
-```
+// ============================================
+// crates/agents-mcp/src/protocol/messages.rs
+// ============================================
 
-#### MCP Server Configuration
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-```rust
-pub struct McpServerConfig {
-    pub name: String,
-    pub transport: McpTransport,
-    pub tools_filter: Option<Vec<String>>,  // Only expose certain tools
-    pub timeout: Duration,
+/// JSON-RPC 2.0 Request
+#[derive(Debug, Clone, Serialize)]
+pub struct JsonRpcRequest {
+    pub jsonrpc: &'static str, // Always "2.0"
+    pub id: u64,
+    pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
 }
 
-pub enum McpTransport {
-    Stdio { command: String, args: Vec<String>, env: HashMap<String, String> },
-    Http { url: String, headers: HashMap<String, String> },
-    WebSocket { url: String },
+/// JSON-RPC 2.0 Response
+#[derive(Debug, Clone, Deserialize)]
+pub struct JsonRpcResponse {
+    pub jsonrpc: String,
+    pub id: u64,
+    #[serde(default)]
+    pub result: Option<Value>,
+    #[serde(default)]
+    pub error: Option<JsonRpcError>,
 }
-```
 
-#### Tool Adapter
+/// JSON-RPC 2.0 Error
+#[derive(Debug, Clone, Deserialize)]
+pub struct JsonRpcError {
+    pub code: i64,
+    pub message: String,
+    pub data: Option<Value>,
+}
 
-```rust
-/// Wraps an MCP tool to implement our Tool trait
+// ============================================
+// crates/agents-mcp/src/protocol/types.rs
+// ============================================
+
+/// MCP Tool Definition
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct McpTool {
-    server: Arc<McpClient>,
-    tool_info: McpToolInfo,
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: Value, // JSON Schema
+}
+
+/// MCP Tool Call Result
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpToolResult {
+    pub content: Vec<McpContent>,
+    #[serde(rename = "isError", default)]
+    pub is_error: bool,
+}
+
+/// MCP Content (text, image, etc.)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum McpContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image { data: String, mime_type: String },
+    #[serde(rename = "resource")]
+    Resource { uri: String, text: Option<String> },
+}
+
+/// Initialize request params
+#[derive(Debug, Clone, Serialize)]
+pub struct InitializeParams {
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: String,
+    pub capabilities: ClientCapabilities,
+    #[serde(rename = "clientInfo")]
+    pub client_info: ClientInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClientCapabilities {
+    // We only need tool-calling capability
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClientInfo {
+    pub name: String,
+    pub version: String,
+}
+
+/// Tools list response
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolsListResult {
+    pub tools: Vec<McpTool>,
+}
+
+/// Tool call params
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolCallParams {
+    pub name: String,
+    pub arguments: Value,
+}
+```
+
+### MCP Client Implementation
+
+```rust
+// ============================================
+// crates/agents-mcp/src/client.rs
+// ============================================
+
+use crate::protocol::*;
+use crate::transport::Transport;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+pub struct McpClient {
+    transport: Arc<Mutex<Box<dyn Transport>>>,
+    request_id: AtomicU64,
+    server_name: String,
+    tools: Vec<McpTool>,
+}
+
+impl McpClient {
+    /// Connect to an MCP server and perform initialization
+    pub async fn connect(transport: impl Transport + 'static) -> Result<Self, McpError> {
+        let mut client = Self {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            server_name: String::new(),
+            tools: Vec::new(),
+        };
+        
+        // Perform MCP handshake
+        client.initialize().await?;
+        
+        // Fetch available tools
+        client.tools = client.list_tools().await?;
+        
+        Ok(client)
+    }
+    
+    async fn initialize(&mut self) -> Result<(), McpError> {
+        let params = InitializeParams {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: ClientCapabilities {},
+            client_info: ClientInfo {
+                name: "rust-deep-agents-sdk".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+        };
+        
+        let response = self.send_request("initialize", Some(params)).await?;
+        
+        // Send initialized notification
+        self.send_notification("notifications/initialized", None::<()>).await?;
+        
+        Ok(())
+    }
+    
+    async fn list_tools(&self) -> Result<Vec<McpTool>, McpError> {
+        let response: ToolsListResult = self.send_request("tools/list", None::<()>).await?;
+        Ok(response.tools)
+    }
+    
+    /// Call a tool on the MCP server
+    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<McpToolResult, McpError> {
+        let params = ToolCallParams {
+            name: name.to_string(),
+            arguments,
+        };
+        self.send_request("tools/call", Some(params)).await
+    }
+    
+    /// Get list of available tools
+    pub fn tools(&self) -> &[McpTool] {
+        &self.tools
+    }
+    
+    async fn send_request<P: Serialize, R: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: Option<P>,
+    ) -> Result<R, McpError> {
+        let id = self.request_id.fetch_add(1, Ordering::SeqCst);
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0",
+            id,
+            method: method.to_string(),
+            params: params.map(|p| serde_json::to_value(p).unwrap()),
+        };
+        
+        let mut transport = self.transport.lock().await;
+        transport.send(&serde_json::to_string(&request)?).await?;
+        
+        let response_str = transport.receive().await?;
+        let response: JsonRpcResponse = serde_json::from_str(&response_str)?;
+        
+        if let Some(error) = response.error {
+            return Err(McpError::ServerError(error));
+        }
+        
+        serde_json::from_value(response.result.unwrap_or(Value::Null))
+            .map_err(McpError::from)
+    }
+}
+```
+
+### Stdio Transport
+
+```rust
+// ============================================
+// crates/agents-mcp/src/transport/stdio.rs
+// ============================================
+
+use async_trait::async_trait;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+
+pub struct StdioTransport {
+    child: Child,
+    stdin: tokio::process::ChildStdin,
+    stdout: BufReader<tokio::process::ChildStdout>,
+}
+
+impl StdioTransport {
+    pub async fn spawn(command: &str, args: &[&str]) -> Result<Self, McpError> {
+        let mut child = Command::new(command)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()?;
+        
+        let stdin = child.stdin.take().expect("stdin not captured");
+        let stdout = BufReader::new(child.stdout.take().expect("stdout not captured"));
+        
+        Ok(Self { child, stdin, stdout })
+    }
 }
 
 #[async_trait]
-impl Tool for McpTool {
-    fn schema(&self) -> ToolSchema {
-        // Convert MCP tool schema to SDK schema
+impl Transport for StdioTransport {
+    async fn send(&mut self, message: &str) -> Result<(), McpError> {
+        self.stdin.write_all(message.as_bytes()).await?;
+        self.stdin.write_all(b"\n").await?;
+        self.stdin.flush().await?;
+        Ok(())
     }
     
-    async fn execute(&self, args: Value, ctx: ToolContext) -> anyhow::Result<ToolResult> {
-        // Forward to MCP server
-        self.server.call_tool(&self.tool_info.name, args).await
+    async fn receive(&mut self) -> Result<String, McpError> {
+        let mut line = String::new();
+        self.stdout.read_line(&mut line).await?;
+        Ok(line)
+    }
+}
+```
+
+### Tool Adapter (MCP → SDK)
+
+```rust
+// ============================================
+// crates/agents-mcp/src/tool_adapter.rs
+// ============================================
+
+use agents_core::tools::{Tool, ToolBox, ToolContext, ToolResult, ToolSchema};
+use crate::{McpClient, McpTool, McpContent};
+use std::sync::Arc;
+
+/// Wraps an MCP tool to implement our SDK's Tool trait
+pub struct McpToolAdapter {
+    client: Arc<McpClient>,
+    tool: McpTool,
+}
+
+impl McpToolAdapter {
+    pub fn new(client: Arc<McpClient>, tool: McpTool) -> Self {
+        Self { client, tool }
+    }
+    
+    /// Convert MCP tool to SDK ToolBox
+    pub fn into_toolbox(self) -> ToolBox {
+        ToolBox::new(Arc::new(self))
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for McpToolAdapter {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
+            name: self.tool.name.clone(),
+            description: self.tool.description.clone().unwrap_or_default(),
+            parameters: self.tool.input_schema.clone(),
+        }
+    }
+    
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _ctx: ToolContext,
+    ) -> anyhow::Result<ToolResult> {
+        let result = self.client.call_tool(&self.tool.name, args).await?;
+        
+        // Convert MCP result to SDK result
+        let content = result.content
+            .into_iter()
+            .filter_map(|c| match c {
+                McpContent::Text { text } => Some(text),
+                McpContent::Resource { text, .. } => text,
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        if result.is_error {
+            Ok(ToolResult::error(content))
+        } else {
+            Ok(ToolResult::success(content))
+        }
+    }
+}
+```
+
+### Builder Integration
+
+```rust
+// ============================================
+// Extension to ConfigurableAgentBuilder
+// ============================================
+
+impl ConfigurableAgentBuilder {
+    /// Add tools from an MCP server via stdio (subprocess)
+    pub async fn with_mcp_stdio(
+        mut self,
+        command: &str,
+        args: &[&str],
+    ) -> Result<Self, McpError> {
+        let transport = StdioTransport::spawn(command, args).await?;
+        let client = Arc::new(McpClient::connect(transport).await?);
+        
+        // Convert all MCP tools to SDK tools
+        for mcp_tool in client.tools().iter().cloned() {
+            let adapter = McpToolAdapter::new(client.clone(), mcp_tool);
+            self.tools.push(adapter.into_toolbox());
+        }
+        
+        self.mcp_clients.push(client);
+        Ok(self)
+    }
+    
+    /// Add tools from an MCP server via HTTP
+    #[cfg(feature = "mcp-http")]
+    pub async fn with_mcp_http(
+        mut self,
+        url: &str,
+    ) -> Result<Self, McpError> {
+        let transport = HttpTransport::connect(url).await?;
+        let client = Arc::new(McpClient::connect(transport).await?);
+        
+        for mcp_tool in client.tools().iter().cloned() {
+            let adapter = McpToolAdapter::new(client.clone(), mcp_tool);
+            self.tools.push(adapter.into_toolbox());
+        }
+        
+        self.mcp_clients.push(client);
+        Ok(self)
     }
 }
 ```
 
 ## Implementation Phases
 
-### Phase 1: Core MCP Client (MVP)
-**Estimated: 2-3 days**
-
-- [ ] Create `agents-mcp` crate
-- [ ] Add `rust-mcp-sdk` dependency
-- [ ] Implement `McpClient` wrapper
-- [ ] Implement `McpTool` adapter
-- [ ] Add `with_mcp_stdio()` to builder
-- [ ] Basic example with filesystem MCP server
-
-### Phase 2: HTTP/SSE Transport
-**Estimated: 1-2 days**
-
-- [ ] Add HTTP transport support
-- [ ] Add SSE streaming support
-- [ ] Connection pooling and retry logic
-- [ ] `with_mcp_http()` builder method
-
-### Phase 3: Advanced Features
-**Estimated: 2-3 days**
-
-- [ ] MCP Resources support (read data sources)
-- [ ] MCP Prompts support (template management)
-- [ ] Tool filtering and namespacing
-- [ ] Health checks and reconnection
-
-### Phase 4: Server Mode (Optional)
+### Phase 1: Core Protocol (MVP)
 **Estimated: 3-4 days**
 
-- [ ] Expose SDK tools as MCP server
-- [ ] Support for SDK as MCP provider
-- [ ] Documentation and examples
+- [ ] Create `agents-mcp` crate structure
+- [ ] Implement JSON-RPC message types
+- [ ] Implement MCP protocol types (Tool, Content, etc.)
+- [ ] Implement basic `McpClient`
+- [ ] Implement `StdioTransport`
+- [ ] Implement `McpToolAdapter`
+- [ ] Add `with_mcp_stdio()` to builder
+- [ ] Basic example with filesystem server
 
-## Example Usage (Target API)
+**Dependencies**: Only `serde`, `serde_json`, `tokio`, `async-trait` (all already in deps)
+
+### Phase 2: Robustness
+**Estimated: 2 days**
+
+- [ ] Error handling and recovery
+- [ ] Connection health checks
+- [ ] Graceful shutdown (kill subprocess)
+- [ ] Timeout handling
+- [ ] Logging with `tracing`
+
+### Phase 3: HTTP Transport (Optional)
+**Estimated: 2-3 days**
+
+- [ ] HTTP/SSE transport implementation
+- [ ] Connection pooling
+- [ ] `with_mcp_http()` builder method
+- [ ] Feature-gated behind `mcp-http`
+
+### Phase 4: Advanced Features
+**Estimated: 2-3 days**
+
+- [ ] MCP Resources support
+- [ ] MCP Prompts support
+- [ ] Tool namespacing (prefix with server name)
+- [ ] Parallel tool calls optimization
+
+## Dependencies
+
+```toml
+# crates/agents-mcp/Cargo.toml
+[package]
+name = "agents-mcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agents-core = { path = "../agents-core" }
+
+# Serialization (already in workspace)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime (already in workspace)
+tokio = { version = "1.0", features = ["process", "io-util", "sync"] }
+async-trait = "0.1"
+
+# Logging (already in workspace)
+tracing = "0.1"
+
+# Error handling (already in workspace)
+anyhow = "1.0"
+thiserror = "1.0"
+
+[features]
+default = ["stdio"]
+stdio = []
+http = ["reqwest"]
+
+[dependencies.reqwest]
+version = "0.12"
+optional = true
+features = ["json"]
+```
+
+## Example Usage
 
 ```rust
-use agents_sdk::{
-    ConfigurableAgentBuilder, 
-    OpenAiConfig, 
-    OpenAiChatModel,
-    mcp::McpServerConfig,
-};
+use agents_sdk::{ConfigurableAgentBuilder, OpenAiConfig, OpenAiChatModel};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -220,23 +570,21 @@ async fn main() -> anyhow::Result<()> {
         OpenAiConfig::new(api_key, "gpt-4o-mini")
     )?);
 
-    let agent = ConfigurableAgentBuilder::new("You are a helpful assistant with filesystem access.")
-        .with_model(model)
-        // Add MCP filesystem server (runs as subprocess)
-        .with_mcp_stdio("npx", &["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])
-        // Add custom MCP server via HTTP
-        .with_mcp_http("http://localhost:8080/mcp")
-        // Can still use native tools
-        .with_tool(MyCustomTool::as_tool())
-        .build()?;
+    // Build agent with MCP filesystem server
+    let agent = ConfigurableAgentBuilder::new(
+        "You are a helpful assistant with filesystem access."
+    )
+    .with_model(model)
+    // Spawn filesystem MCP server as subprocess
+    .with_mcp_stdio("npx", &["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])
+    .await?
+    // Can still add native tools
+    .with_tool(MyCustomTool::as_tool())
+    .build()?;
 
-    // Agent now has access to:
-    // - Filesystem tools from MCP server (read_file, write_file, list_directory, etc.)
-    // - HTTP server tools
-    // - Native MyCustomTool
-    
+    // Agent now has access to: read_file, write_file, list_directory, etc.
     let response = agent.handle_message(
-        "List the files in /tmp and read the first text file",
+        "List the files in /tmp directory",
         Arc::new(AgentStateSnapshot::default())
     ).await?;
 
@@ -245,70 +593,53 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-## Dependencies
-
-```toml
-# crates/agents-mcp/Cargo.toml
-[dependencies]
-agents-core = { path = "../agents-core" }
-rust-mcp-sdk = { version = "0.8", default-features = false, features = ["client", "stdio", "sse"] }
-tokio = { version = "1.0", features = ["process", "io-util"] }
-async-trait = "0.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tracing = "0.1"
-anyhow = "1.0"
-```
-
 ## Testing Strategy
 
-1. **Unit Tests**: Mock MCP responses, test tool conversion
-2. **Integration Tests**: Real MCP server (filesystem) in CI
-3. **Example Programs**: Demonstrate various MCP servers
+1. **Mock MCP Server**: Create a simple in-process MCP server for testing
+2. **Unit Tests**: Test JSON-RPC serialization, type conversion
+3. **Integration Tests**: Test with real `@modelcontextprotocol/server-filesystem`
+4. **Example Programs**: Demonstrate various use cases
 
 ## Documentation Updates
 
 - [ ] Add `book/src/features/mcp.md`
 - [ ] Update `book/src/api/builder.md` with MCP methods
-- [ ] Add MCP example to `examples/`
+- [ ] Add MCP example to `examples/mcp-demo/`
 - [ ] Update README with MCP section
 
-## Risks & Mitigations
+## File Count Estimate
 
-| Risk | Mitigation |
-|------|------------|
-| MCP spec changes | Pin to specific schema version |
-| Performance overhead | Connection pooling, async execution |
-| Complex error handling | Wrap MCP errors in SDK error types |
-| Breaking changes | Feature-gate behind `mcp` flag |
+| File | LOC (approx) |
+|------|--------------|
+| `lib.rs` | 30 |
+| `protocol/messages.rs` | 80 |
+| `protocol/types.rs` | 120 |
+| `protocol/error.rs` | 50 |
+| `transport/mod.rs` | 20 |
+| `transport/stdio.rs` | 80 |
+| `client.rs` | 150 |
+| `tool_adapter.rs` | 80 |
+| **Total** | **~610 lines** |
+
+Minimal, focused, no external MCP dependencies!
 
 ## Success Criteria
 
-1. ✅ Agent can use tools from MCP stdio server
-2. ✅ Agent can use tools from MCP HTTP server  
-3. ✅ Existing tool API unchanged
-4. ✅ Comprehensive documentation
-5. ✅ At least one working example
+1. ✅ Agent can spawn and use MCP stdio servers
+2. ✅ MCP tools appear as native SDK tools
+3. ✅ No external MCP crate dependencies
+4. ✅ Clean, well-documented implementation
+5. ✅ Working example with filesystem server
 
 ## Related Links
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
-- [MCP GitHub](https://github.com/modelcontextprotocol)
-- [rust-mcp-sdk](https://github.com/rust-mcp-stack/rust-mcp-sdk)
-- [Discussion: MCP Support](https://github.com/yafatek/rust-deep-agents-sdk/discussions) - @bbigras request
-
-## Timeline
-
-| Week | Milestone |
-|------|-----------|
-| Week 1 | Phase 1 complete (MVP) |
-| Week 2 | Phase 2 complete (HTTP support) |
-| Week 3 | Phase 3 complete (Advanced features) |
-| Week 4 | Documentation, testing, PR review |
+- [JSON-RPC 2.0 Spec](https://www.jsonrpc.org/specification)
+- [MCP Reference Servers](https://github.com/modelcontextprotocol/servers)
 
 ---
 
 **Author**: Feature planning for rust-deep-agents-sdk  
 **Branch**: `feature/mcp-support`  
-**Status**: Planning
-
+**Status**: Planning  
+**Approach**: From-scratch implementation (no external MCP deps)
