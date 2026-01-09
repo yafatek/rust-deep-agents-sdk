@@ -38,6 +38,7 @@
 - [Token Tracking](./features/token-tracking.md)
 - [Human-in-the-Loop (HITL)](./features/hitl.md)
 - [Sub-Agents](./features/sub-agents.md)
+- [MCP Integration](./features/mcp.md)
 - [Event System](./features/events.md)
 - [PII Sanitization](./features/pii-sanitization.md)
 - [TOON Format](./features/toon-format.md)

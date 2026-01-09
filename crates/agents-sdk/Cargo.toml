@@ -1,6 +1,6 @@
 [package]
 name = "agents-sdk"
-version = "0.0.29"
+version = "0.0.30"
 edition = "2021"
 description = "High-performance Rust SDK for composing reusable AI agents with custom tools, sub-agents, and prompts"
 license = "MIT OR Apache-2.0"
@@ -13,14 +13,15 @@ readme = "../../README.md"
 
 [dependencies]
 # Core dependencies (always included)
-agents-core = { version = "0.0.29", path = "../agents-core" }
-agents-runtime = { version = "0.0.29", path = "../agents-runtime" }
+agents-core = { version = "0.0.30", path = "../agents-core" }
+agents-runtime = { version = "0.0.30", path = "../agents-runtime" }
 
 # Optional dependencies controlled by features
-agents-toolkit = { version = "0.0.29", path = "../agents-toolkit", optional = true }
+agents-toolkit = { version = "0.0.30", path = "../agents-toolkit", optional = true }
 agents-macros = { version = "0.1.0", path = "../agents-macros", optional = true }
-agents-aws = { version = "0.0.29", path = "../agents-aws", optional = true }
-agents-persistence = { version = "0.0.29", path = "../agents-persistence", optional = true }
+agents-aws = { version = "0.0.30", path = "../agents-aws", optional = true }
+agents-persistence = { version = "0.0.30", path = "../agents-persistence", optional = true }
+agents-mcp = { version = "0.0.30", path = "../agents-mcp", optional = true }
 
 [features]
 # Default features - includes toolkit for a good out-of-box experience
@@ -29,6 +30,9 @@ default = ["toolkit"]
 # Individual feature flags
 toolkit = ["dep:agents-toolkit", "dep:agents-macros"]
 aws = ["dep:agents-aws"]
+mcp = ["dep:agents-mcp", "agents-mcp/stdio"]
+mcp-http = ["dep:agents-mcp", "agents-mcp/http"]
+mcp-full = ["mcp", "mcp-http"]
 
 # Persistence backends
 redis = ["dep:agents-persistence", "agents-persistence/redis"]
@@ -40,7 +44,7 @@ persistence = ["redis", "postgres"]
 aws-full = ["aws", "dynamodb"]
 
 # Convenience feature for everything
-full = ["toolkit", "aws-full", "persistence"]
+full = ["toolkit", "aws-full", "persistence", "mcp-full"]
 
 [dev-dependencies]
 anyhow = { workspace = true }

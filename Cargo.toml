@@ -7,6 +7,7 @@ members = [
     "crates/agents-sdk",
     "crates/agents-macros",
     "crates/agents-persistence",
+    "crates/agents-mcp",
     # "examples/simple-agent",  # TODO: Update to use #[tool] macro
     # "examples/deep-research-agent",  # TODO: Update to use #[tool] macro
     # "examples/deep-agent-server",  # TODO: Update to use #[tool] macro
@@ -27,6 +28,9 @@ members = [
     "examples/pii-sanitization-demo",
     "examples/streaming-events-demo",
     "examples/toon-format-demo",
+    "examples/mcp-demo",
+    "examples/mcp-subagent-demo",
+    "examples/http-mcp-demo",
 ]
 resolver = "2"
 

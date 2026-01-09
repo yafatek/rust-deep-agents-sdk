@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agents-aws"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -27,7 +27,7 @@ dependencies = [
 
 [[package]]
 name = "agents-core"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -59,8 +59,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "agents-mcp"
+version = "0.0.30"
+dependencies = [
+ "agents-core",
+ "anyhow",
+ "async-trait",
+ "futures",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "agents-persistence"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -75,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "agents-runtime"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "agents-toolkit",
@@ -95,11 +112,12 @@ dependencies = [
 
 [[package]]
 name = "agents-sdk"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-aws",
  "agents-core",
  "agents-macros",
+ "agents-mcp",
  "agents-persistence",
  "agents-runtime",
  "agents-toolkit",
@@ -110,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "agents-toolkit"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "agents-macros",
@@ -1989,6 +2007,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-mcp-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-sdk",
+ "anyhow",
+ "dotenv",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "http-range-header"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2508,6 +2539,31 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
+
+[[package]]
+name = "mcp-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-sdk",
+ "anyhow",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "mcp-subagent-demo"
+version = "0.1.0"
+dependencies = [
+ "agents-sdk",
+ "anyhow",
+ "dotenv",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "md-5"

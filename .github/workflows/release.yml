@@ -102,6 +102,10 @@ jobs:
         run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
       - name: Wait for agents-aws to be available
         run: sleep 5
+      - name: Publish agents-mcp
+        run: cargo publish -p agents-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+      - name: Wait for agents-mcp to be available
+        run: sleep 5
       - name: Publish agents-sdk (unified SDK)
         run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
 
@@ -131,6 +135,7 @@ jobs:
             - `agents-persistence` - Database persistence (Redis, PostgreSQL)
             - `agents-runtime` - Async runtime orchestration
             - `agents-aws` - AWS integrations (DynamoDB, Secrets Manager)
+            - `agents-mcp` - Model Context Protocol client for external tools
             
             ## Recommended Installation (Unified SDK):
             ```toml
@@ -145,6 +150,9 @@ jobs:
             
             # With PostgreSQL persistence:
             agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["postgres"] }
+            
+            # With MCP (external tool servers):
+            agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["mcp"] }
             
             # All features:
             agents-sdk = { version = "${{ steps.version.outputs.VERSION }}", features = ["full"] }

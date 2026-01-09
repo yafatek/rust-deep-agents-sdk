@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.30] - 2026-01-09
+
+### Added
+- **MCP (Model Context Protocol) Integration**: Native support for external tool servers
+  - New `agents-mcp` crate with from-scratch implementation (no external MCP deps)
+  - `McpClient` for connecting to MCP servers
+  - `StdioTransport` for spawning MCP servers as subprocesses
+  - `HttpTransport` for HTTP-based MCP servers (Context7, remote services)
+  - `McpToolAdapter` for seamless integration with SDK tool system
+  - `create_mcp_tools()` helper for converting MCP tools with namespace support
+  - Feature-gated: `mcp` for stdio, `mcp-http` for HTTP, `mcp-full` for both
+  - Full JSON-RPC 2.0 protocol implementation
+  - Graceful shutdown with `kill_on_drop` for child processes
+  - Proper handling of server notifications during request/response
+  - Thread-safe concurrent access with atomic request/response cycles
+  - Comprehensive error handling with `McpError` types
+  - See: [MCP Documentation](book/src/features/mcp.md)
+
+- **New Examples**
+  - `http-mcp-demo`: HTTP MCP with Context7 and Anthropic/OpenAI support
+  - `mcp-subagent-demo`: Stdio MCP with sub-agent delegation
+
+### Changed
+- Added `agents-mcp` to workspace and release pipeline
+- `agents-sdk` now exports MCP types when `mcp` or `mcp-http` features are enabled
+- Tool names now use underscore separator for OpenAI API compatibility
+
+### Fixed
+- MCP transport now holds lock for full request/response cycle (prevents race conditions)
+- MCP client skips server notifications while awaiting responses
+
 ## [0.0.29] - 2026-01-04
 
 ### Added

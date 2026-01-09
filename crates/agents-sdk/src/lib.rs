@@ -55,6 +55,7 @@
 //! - `dynamodb`: DynamoDB-backed state persistence (AWS)
 //! - `persistence`: Grouped feature for Redis + PostgreSQL
 //! - `aws-full`: Grouped feature for AWS + DynamoDB
+//! - `mcp`: Model Context Protocol client for external tools
 //! - `full`: Includes all features
 //!
 //! ## Installation Options
@@ -199,6 +200,49 @@ pub use agents_persistence::RedisCheckpointer;
 #[cfg(feature = "postgres")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 pub use agents_persistence::PostgresCheckpointer;
+
+// Re-export MCP functionality (when mcp feature is enabled)
+#[cfg(feature = "mcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+pub use agents_mcp::{
+    create_mcp_tools, McpClient, McpClientConfig, McpContent, McpError, McpTool, McpToolAdapter,
+    McpToolResult, StdioTransport,
+};
+
+// Re-export HTTP transport (when mcp-http feature is enabled)
+#[cfg(feature = "mcp-http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp-http")))]
+pub use agents_mcp::{HttpTransport, HttpTransportBuilder};
+
+/// MCP (Model Context Protocol) integration module
+///
+/// This module provides integration with MCP servers, allowing agents to use
+/// external tools via the Model Context Protocol.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use agents_sdk::{ConfigurableAgentBuilder, McpClient, StdioTransport, create_mcp_tools};
+/// use std::sync::Arc;
+///
+/// // Spawn an MCP filesystem server
+/// let transport = StdioTransport::spawn("npx", &["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]).await?;
+/// let mcp_client = Arc::new(McpClient::connect(transport).await?);
+///
+/// // Get tools from the MCP server
+/// let mcp_tools = create_mcp_tools(mcp_client, Some("fs"));
+///
+/// // Add MCP tools to your agent
+/// let agent = ConfigurableAgentBuilder::new("You are a helpful assistant with filesystem access.")
+///     .with_model(model)
+///     .with_tools(mcp_tools)
+///     .build()?;
+/// ```
+#[cfg(feature = "mcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+pub mod mcp {
+    pub use agents_mcp::*;
+}
 
 /// Prelude module for common imports
 ///
