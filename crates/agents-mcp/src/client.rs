@@ -4,7 +4,7 @@
 //! including initialization, tool listing, and tool execution.
 
 use crate::protocol::{
-    messages::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, RequestId},
+    messages::{IncomingMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, RequestId},
     types::{
         InitializeParams, InitializeResult, McpTool, McpToolResult, ToolCallParams, ToolsListResult,
     },
@@ -311,20 +311,38 @@ impl McpClient {
         // CRITICAL: Hold lock for entire request/response cycle to prevent
         // concurrent requests from interleaving and causing ResponseIdMismatch.
         // This ensures atomic request-response pairs.
-        let response_json = timeout(self.config.request_timeout, async {
+        let response = timeout(self.config.request_timeout, async {
             let mut transport = self.transport.lock().await;
             
             // Send request while holding the lock
             transport.send(&request_json).await?;
             
-            // Receive response while still holding the lock
-            transport.receive().await
+            // Loop to receive response, skipping any server notifications
+            // MCP servers can emit notifications (e.g., tool list changes) at any time
+            loop {
+                let response_json = transport.receive().await?;
+                
+                // Try to parse as an incoming message (response or notification)
+                let message: IncomingMessage = serde_json::from_str(&response_json)?;
+                
+                match message {
+                    IncomingMessage::Response(response) => {
+                        // Got a response - return it
+                        return Ok::<JsonRpcResponse, McpError>(response);
+                    }
+                    IncomingMessage::Notification(notif) => {
+                        // Server notification - log and continue waiting for response
+                        trace!(
+                            method = %notif.method,
+                            "Received server notification while awaiting response, skipping"
+                        );
+                        continue;
+                    }
+                }
+            }
         })
         .await
         .map_err(|_| McpError::Timeout(self.config.request_timeout))??;
-
-        // Parse response
-        let response: JsonRpcResponse = serde_json::from_str(&response_json)?;
 
         // Verify response ID matches
         if response.id != id {

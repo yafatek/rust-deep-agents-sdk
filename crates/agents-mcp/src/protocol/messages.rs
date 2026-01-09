@@ -170,6 +170,32 @@ pub enum RequestId {
     Number(u64),
 }
 
+/// Incoming JSON-RPC message (can be either a response or a server notification)
+///
+/// MCP servers can send notifications at any time (e.g., tool list changes).
+/// This enum allows us to distinguish between responses (which have an `id`)
+/// and notifications (which don't).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum IncomingMessage {
+    /// A response to a request (has id field)
+    Response(JsonRpcResponse),
+    /// A server-initiated notification (no id field)
+    Notification(ServerNotification),
+}
+
+/// Server-initiated notification (no id field)
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServerNotification {
+    /// Protocol version
+    pub jsonrpc: String,
+    /// Method name
+    pub method: String,
+    /// Optional parameters
+    #[serde(default)]
+    pub params: Option<Value>,
+}
+
 impl From<u64> for RequestId {
     fn from(n: u64) -> Self {
         RequestId::Number(n)
