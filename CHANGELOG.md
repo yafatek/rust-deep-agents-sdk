@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MCP (Model Context Protocol) Integration**: Native support for external tool servers
+  - New `agents-mcp` crate with from-scratch implementation (no external MCP deps)
+  - `McpClient` for connecting to MCP servers via stdio transport
+  - `StdioTransport` for spawning MCP servers as subprocesses
+  - `McpToolAdapter` for seamless integration with SDK tool system
+  - `create_mcp_tools()` helper for converting MCP tools with namespace support
+  - Feature-gated: Enable with `mcp` feature flag in `agents-sdk`
+  - Full JSON-RPC 2.0 protocol implementation
+  - Graceful shutdown with `kill_on_drop` for child processes
+  - Comprehensive error handling with `McpError` types
+  - See: [MCP Documentation](book/src/features/mcp.md)
+
+### Changed
+- Added `agents-mcp` to workspace and release pipeline
+- `agents-sdk` now exports MCP types when `mcp` feature is enabled
+
 ## [0.0.29] - 2026-01-04
 
 ### Added

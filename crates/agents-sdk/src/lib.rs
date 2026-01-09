@@ -209,6 +209,11 @@ pub use agents_mcp::{
     McpToolResult, StdioTransport,
 };
 
+// Re-export HTTP transport (when mcp-http feature is enabled)
+#[cfg(feature = "mcp-http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp-http")))]
+pub use agents_mcp::{HttpTransport, HttpTransportBuilder};
+
 /// MCP (Model Context Protocol) integration module
 ///
 /// This module provides integration with MCP servers, allowing agents to use
@@ -236,7 +241,6 @@ pub use agents_mcp::{
 #[cfg(feature = "mcp")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
 pub mod mcp {
-    //! MCP (Model Context Protocol) types and utilities
     pub use agents_mcp::*;
 }
 

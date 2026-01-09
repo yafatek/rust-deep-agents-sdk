@@ -1,11 +1,15 @@
 [package]
 name = "agents-mcp"
-version = "0.1.0"
+version = "0.0.29"
 edition.workspace = true
 license.workspace = true
-description = "Model Context Protocol (MCP) client for the Rust Deep Agents SDK"
-keywords = ["mcp", "model-context-protocol", "ai", "agents", "tools"]
+repository = "https://github.com/yafatek/rust-deep-agents-sdk"
+homepage = "https://github.com/yafatek/rust-deep-agents-sdk"
+documentation = "https://docs.rs/agents-mcp"
+description = "Model Context Protocol (MCP) client for the Rust Deep Agents SDK - enables external tool integration"
+keywords = ["mcp", "model-context-protocol", "ai", "deep-agents", "tools"]
 categories = ["development-tools", "asynchronous"]
+readme = "README.md"
 
 [dependencies]
 # Internal dependencies
@@ -30,9 +34,13 @@ thiserror.workspace = true
 # UUID for request IDs
 uuid.workspace = true
 
+# HTTP client (optional, for HTTP transport)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+
 [features]
 default = ["stdio"]
 stdio = []
+http = ["dep:reqwest"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

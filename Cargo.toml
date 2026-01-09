@@ -29,6 +29,8 @@ members = [
     "examples/streaming-events-demo",
     "examples/toon-format-demo",
     "examples/mcp-demo",
+    "examples/mcp-subagent-demo",
+    "examples/http-mcp-demo",
 ]
 resolver = "2"
 

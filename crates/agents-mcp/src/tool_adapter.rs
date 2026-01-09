@@ -46,14 +46,14 @@ impl McpToolAdapter {
     ///
     /// This is useful when integrating multiple MCP servers to avoid
     /// tool name collisions. The namespace will be prepended to the
-    /// tool name with a separator.
+    /// tool name with an underscore separator (OpenAI-compatible).
     ///
     /// # Example
     ///
     /// ```rust,ignore
     /// let adapter = McpToolAdapter::new(client, tool)
     ///     .with_namespace("filesystem");
-    /// // Tool name becomes "filesystem.read_file" instead of "read_file"
+    /// // Tool name becomes "filesystem_read_file" instead of "read_file"
     /// ```
     pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
         self.namespace = Some(namespace.into());
@@ -66,10 +66,13 @@ impl McpToolAdapter {
     }
 
     /// Get the effective tool name (with namespace if set)
+    ///
+    /// Uses underscore separator for OpenAI/LLM compatibility.
+    /// Tool names must match pattern `^[a-zA-Z0-9_-]+$`
     fn effective_name(&self) -> String {
         match &self.namespace {
-            Some(ns) => format!("{}.{}", ns, self.tool.name),
-            None => self.tool.name.clone(),
+            Some(ns) => format!("{}_{}", ns, self.tool.name.replace('-', "_")),
+            None => self.tool.name.replace('-', "_"),
         }
     }
 
@@ -192,7 +195,7 @@ impl Tool for McpToolAdapter {
 /// ```rust,ignore
 /// let client = Arc::new(McpClient::connect(transport).await?);
 /// let tools = create_mcp_tools(client, Some("fs"));
-/// // Tools will be named "fs.read_file", "fs.write_file", etc.
+/// // Tools will be named "fs_read_file", "fs_write_file", etc.
 /// ```
 pub fn create_mcp_tools(client: Arc<McpClient>, namespace: Option<&str>) -> Vec<ToolBox> {
     client
@@ -257,13 +260,14 @@ mod tests {
         // In real tests, we'd use a mock client
         // For now, just test the name generation logic directly
         assert_eq!(format_name(None, &tool.name), "read_file");
-        assert_eq!(format_name(Some("fs"), &tool.name), "fs.read_file");
+        assert_eq!(format_name(Some("fs"), &tool.name), "fs_read_file");
     }
 
     fn format_name(namespace: Option<&str>, name: &str) -> String {
+        let safe_name = name.replace('-', "_");
         match namespace {
-            Some(ns) => format!("{}.{}", ns, name),
-            None => name.to_string(),
+            Some(ns) => format!("{}_{}", ns, safe_name),
+            None => safe_name,
         }
     }
 }

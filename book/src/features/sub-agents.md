@@ -130,8 +130,8 @@ let researcher = SubAgentConfig::new(
     "You are a research specialist with access to web and academic search.",
 )
 .with_tools(vec![
-    WebSearchTool::as_tool(),
-    PaperSearchTool::as_tool(),
+        WebSearchTool::as_tool(),
+        PaperSearchTool::as_tool(),
 ]);
 ```
 
