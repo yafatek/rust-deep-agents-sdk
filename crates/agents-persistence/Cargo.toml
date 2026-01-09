@@ -1,6 +1,6 @@
 [package]
 name = "agents-persistence"
-version = "0.0.29"
+version = "0.0.30"
 edition = "2021"
 description = "Database-backed persistence implementations for the Rust deep agents SDK (Redis, PostgreSQL)"
 authors = ["YAFATEK <hello@yafatek.dev>"]
@@ -13,7 +13,7 @@ categories = ["api-bindings", "database", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-agents-core = { path = "../agents-core", version = "0.0.29" }
+agents-core = { path = "../agents-core", version = "0.0.30" }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

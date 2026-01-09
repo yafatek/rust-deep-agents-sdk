@@ -313,18 +313,18 @@ impl McpClient {
         // This ensures atomic request-response pairs.
         let response = timeout(self.config.request_timeout, async {
             let mut transport = self.transport.lock().await;
-            
+
             // Send request while holding the lock
             transport.send(&request_json).await?;
-            
+
             // Loop to receive response, skipping any server notifications
             // MCP servers can emit notifications (e.g., tool list changes) at any time
             loop {
                 let response_json = transport.receive().await?;
-                
+
                 // Try to parse as an incoming message (response or notification)
                 let message: IncomingMessage = serde_json::from_str(&response_json)?;
-                
+
                 match message {
                     IncomingMessage::Response(response) => {
                         // Got a response - return it

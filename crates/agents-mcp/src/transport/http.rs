@@ -57,11 +57,17 @@ impl HttpTransport {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let transport = HttpTransport::new("https://mcp-server.example.com/api")
+    /// let transport = HttpTransport::builder("https://mcp-server.example.com/api")
     ///     .with_header("Authorization", "Bearer token")
     ///     .build()?;
     /// ```
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(url: impl Into<String>) -> HttpTransportBuilder {
+        HttpTransportBuilder::new(url)
+    }
+
+    /// Alias for `new` - creates a builder
+    pub fn builder(url: impl Into<String>) -> HttpTransportBuilder {
         HttpTransportBuilder::new(url)
     }
 
@@ -221,6 +227,7 @@ impl std::fmt::Debug for HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::Transport;
 
     #[test]
     fn test_builder_basic() {

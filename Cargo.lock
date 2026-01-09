@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agents-aws"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -27,7 +27,7 @@ dependencies = [
 
 [[package]]
 name = "agents-core"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "agents-mcp"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "agents-persistence"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "anyhow",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "agents-runtime"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "agents-toolkit",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "agents-sdk"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-aws",
  "agents-core",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "agents-toolkit"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "agents-core",
  "agents-macros",

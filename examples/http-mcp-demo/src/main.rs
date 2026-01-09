@@ -102,7 +102,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(e) => {
             error!("Failed to connect to MCP server: {}", e);
-            println!("\n⚠️  Could not connect to MCP server at {}", mcp_config.url);
+            println!(
+                "\n⚠️  Could not connect to MCP server at {}",
+                mcp_config.url
+            );
             println!("    The demo will continue without MCP tools.\n");
             println!("    To use MCP tools, set MCP_SERVER_URL environment variable");
             println!("    to a valid HTTP MCP server endpoint.\n");
@@ -220,9 +223,7 @@ async fn run_without_mcp(provider: LlmProvider) -> anyhow::Result<()> {
 }
 
 /// Run the interactive chat loop
-async fn run_chat_loop(
-    agent: agents_sdk::DeepAgent,
-) -> anyhow::Result<()> {
+async fn run_chat_loop(agent: agents_sdk::DeepAgent) -> anyhow::Result<()> {
     println!("\n╔══════════════════════════════════════════════════════════════╗");
     println!("║  🎯 Agent Ready! Try these example queries:                  ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
@@ -261,7 +262,10 @@ async fn run_chat_loop(
         match agent.handle_message(input, state.clone()).await {
             Ok(response) => {
                 let elapsed = start.elapsed();
-                println!("\n🤖 Agent (took {:.1}s - mostly OpenAI/MCP API latency):", elapsed.as_secs_f64());
+                println!(
+                    "\n🤖 Agent (took {:.1}s - mostly OpenAI/MCP API latency):",
+                    elapsed.as_secs_f64()
+                );
                 println!("{}", response.content.as_text().unwrap_or("No response"));
                 println!();
             }
