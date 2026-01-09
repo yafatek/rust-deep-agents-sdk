@@ -308,15 +308,16 @@ impl McpClient {
         let request_json = serde_json::to_string(&request)?;
         trace!(method = %method, id = %id, "Sending JSON-RPC request");
 
-        // Send request
-        {
-            let mut transport = self.transport.lock().await;
-            transport.send(&request_json).await?;
-        }
-
-        // Receive response with timeout
+        // CRITICAL: Hold lock for entire request/response cycle to prevent
+        // concurrent requests from interleaving and causing ResponseIdMismatch.
+        // This ensures atomic request-response pairs.
         let response_json = timeout(self.config.request_timeout, async {
             let mut transport = self.transport.lock().await;
+            
+            // Send request while holding the lock
+            transport.send(&request_json).await?;
+            
+            // Receive response while still holding the lock
             transport.receive().await
         })
         .await
