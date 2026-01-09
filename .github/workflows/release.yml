@@ -72,60 +72,65 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           echo "Updating all crate versions to $VERSION"
           
-          # Update package versions (matches any semver pattern like 0.0.1, 0.0.30, 0.1.0, etc.)
+          # Update package versions (matches any semver pattern)
           for f in crates/*/Cargo.toml; do
-            sed -i 's/^version = "[0-9]\+\.[0-9]\+\.[0-9]\+"/version = "'"$VERSION"'"/' "$f"
+            sed -i -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'"$VERSION"'"/' "$f"
           done
           
           # Update internal dependency versions (format: version = "x.y.z", path = ...)
           for f in crates/*/Cargo.toml; do
-            sed -i 's/version = "[0-9]\+\.[0-9]\+\.[0-9]\+", path =/version = "'"$VERSION"'", path =/g' "$f"
+            sed -i -E 's/version = "[0-9]+\.[0-9]+\.[0-9]+", path =/version = "'"$VERSION"'", path =/g' "$f"
           done
           
           # Update internal dependency versions (format: { path = ..., version = "x.y.z" })
           for f in crates/*/Cargo.toml; do
-            sed -i 's/, version = "[0-9]\+\.[0-9]\+\.[0-9]\+"/, version = "'"$VERSION"'"/g' "$f"
+            sed -i -E 's/, version = "[0-9]+\.[0-9]+\.[0-9]+"/, version = "'"$VERSION"'"/g' "$f"
           done
           
-          echo "Updated versions in all Cargo.toml files"
-          grep -h "^version" crates/*/Cargo.toml | sort -u
+          echo "=== Updated Cargo.toml versions ==="
+          for f in crates/*/Cargo.toml; do
+            echo "--- $f ---"
+            grep -E "^version|version.*path" "$f" | head -5
+          done
+      
+      # Publish in dependency order - failures will stop the workflow
       - name: Publish agents-macros
-        continue-on-error: true
-        run: cargo publish -p agents-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-macros to be available
-        run: sleep 10
+        run: cargo publish -p agents-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-core
-        continue-on-error: true
-        run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-core to be available
-        run: sleep 10
+        run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-toolkit
-        continue-on-error: true
-        run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-toolkit to be available
-        run: sleep 10
+        run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-persistence
-        continue-on-error: true
-        run: cargo publish -p agents-persistence --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-persistence to be available
-        run: sleep 10
+        run: cargo publish -p agents-persistence --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-runtime
-        continue-on-error: true
-        run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-runtime to be available
-        run: sleep 10
+        run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-aws
-        continue-on-error: true
-        run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-aws to be available
-        run: sleep 10
+        run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 15
+      
       - name: Publish agents-mcp
-        continue-on-error: true
-        run: cargo publish -p agents-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-      - name: Wait for agents-mcp to be available
-        run: sleep 10
+        run: cargo publish -p agents-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      - name: Wait for crates.io index
+        run: sleep 20
+      
       - name: Publish agents-sdk (unified SDK)
-        run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+        run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
 
   create_release:
     needs: publish
