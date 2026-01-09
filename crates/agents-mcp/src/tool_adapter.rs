@@ -263,6 +263,68 @@ mod tests {
         assert_eq!(format_name(Some("fs"), &tool.name), "fs_read_file");
     }
 
+    #[test]
+    fn test_name_with_dashes_converted_to_underscores() {
+        // MCP tools often have dashes in names, but OpenAI requires underscores
+        assert_eq!(format_name(None, "resolve-library-id"), "resolve_library_id");
+        assert_eq!(format_name(Some("docs"), "resolve-library-id"), "docs_resolve_library_id");
+    }
+
+    #[test]
+    fn test_namespace_with_special_chars() {
+        // Namespaces might come from server names with special chars
+        assert_eq!(format_name(Some("context7"), "query-docs"), "context7_query_docs");
+    }
+
+    #[test]
+    fn test_schema_conversion_nested_objects() {
+        let mcp_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "timeout": {"type": "integer"},
+                        "retries": {"type": "integer"}
+                    }
+                }
+            }
+        });
+
+        let sdk_schema = McpToolAdapter::convert_schema(&mcp_schema);
+        assert_eq!(sdk_schema.schema_type, "object");
+        let props = sdk_schema.properties.unwrap();
+        assert!(props.contains_key("config"));
+        assert_eq!(props["config"].schema_type, "object");
+    }
+
+    #[test]
+    fn test_schema_conversion_array_type() {
+        let mcp_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        });
+
+        let sdk_schema = McpToolAdapter::convert_schema(&mcp_schema);
+        let props = sdk_schema.properties.unwrap();
+        assert!(props.contains_key("tags"));
+        assert_eq!(props["tags"].schema_type, "array");
+    }
+
+    #[test]
+    fn test_schema_conversion_empty() {
+        let mcp_schema = serde_json::json!({});
+
+        let sdk_schema = McpToolAdapter::convert_schema(&mcp_schema);
+        assert_eq!(sdk_schema.schema_type, "object");
+        assert!(sdk_schema.properties.is_none());
+    }
+
     fn format_name(namespace: Option<&str>, name: &str) -> String {
         let safe_name = name.replace('-', "_");
         match namespace {

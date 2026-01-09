@@ -380,6 +380,8 @@ impl McpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+    use std::sync::Mutex as StdMutex;
 
     #[test]
     fn test_client_config_default() {
@@ -391,7 +393,7 @@ mod tests {
     #[test]
     fn test_request_id_generation() {
         let client = McpClient {
-            transport: Arc::new(Mutex::new(Box::new(MockTransport))),
+            transport: Arc::new(Mutex::new(Box::new(MockTransport::new(vec![])))),
             request_id: AtomicU64::new(1),
             config: McpClientConfig::default(),
             server_info: None,
@@ -406,17 +408,39 @@ mod tests {
         assert_eq!(id2, RequestId::Number(2));
     }
 
-    // Mock transport for testing
-    struct MockTransport;
+    // Configurable mock transport for testing different scenarios
+    struct MockTransport {
+        responses: StdMutex<VecDeque<String>>,
+        sent: StdMutex<Vec<String>>,
+    }
+
+    impl MockTransport {
+        fn new(responses: Vec<&str>) -> Self {
+            Self {
+                responses: StdMutex::new(responses.into_iter().map(String::from).collect()),
+                sent: StdMutex::new(Vec::new()),
+            }
+        }
+
+        #[allow(dead_code)]
+        fn get_sent(&self) -> Vec<String> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
 
     #[async_trait::async_trait]
     impl Transport for MockTransport {
-        async fn send(&mut self, _message: &str) -> Result<(), McpError> {
+        async fn send(&mut self, message: &str) -> Result<(), McpError> {
+            self.sent.lock().unwrap().push(message.to_string());
             Ok(())
         }
 
         async fn receive(&mut self) -> Result<String, McpError> {
-            Ok(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#.to_string())
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| McpError::Transport("No more mock responses".into()))
         }
 
         async fn close(&mut self) -> Result<(), McpError> {
@@ -426,5 +450,143 @@ mod tests {
         fn is_connected(&self) -> bool {
             true
         }
+    }
+
+    #[tokio::test]
+    async fn test_send_request_success() {
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        let result: serde_json::Value = client
+            .send_request("tools/list", None::<()>)
+            .await
+            .unwrap();
+
+        assert_eq!(result, serde_json::json!({"tools": []}));
+    }
+
+    #[tokio::test]
+    async fn test_send_request_skips_notifications() {
+        // Server sends a notification before the actual response
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#,
+            r#"{"jsonrpc":"2.0","method":"notifications/resources/list_changed"}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":{"success":true}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        // Should skip the notifications and return the actual response
+        let result: serde_json::Value = client
+            .send_request("test/method", None::<()>)
+            .await
+            .unwrap();
+
+        assert_eq!(result, serde_json::json!({"success": true}));
+    }
+
+    #[tokio::test]
+    async fn test_send_request_id_mismatch_error() {
+        // Server returns response with wrong ID
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","id":999,"result":{}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        let result: Result<serde_json::Value, _> = client
+            .send_request("test/method", None::<()>)
+            .await;
+
+        assert!(matches!(result, Err(McpError::ResponseIdMismatch { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_send_request_json_rpc_error() {
+        // Server returns a JSON-RPC error
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        let result: Result<serde_json::Value, _> = client
+            .send_request("test/method", None::<()>)
+            .await;
+
+        // Should return a Protocol error (JSON-RPC errors become Protocol errors)
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_success() {
+        // Simulate a tool call response
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Hello World"}],"isError":false}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        let args = serde_json::json!({"message": "hello"});
+        let result = client.call_tool("test_tool", args).await.unwrap();
+
+        assert!(!result.is_error);
+        assert_eq!(result.content.len(), 1);
+        assert_eq!(result.content[0].as_text(), Some("Hello World"));
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_error_response() {
+        // Simulate a tool that returns an error result
+        let transport = MockTransport::new(vec![
+            r#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Tool failed: file not found"}],"isError":true}}"#,
+        ]);
+        let client = McpClient {
+            transport: Arc::new(Mutex::new(Box::new(transport))),
+            request_id: AtomicU64::new(1),
+            config: McpClientConfig::default(),
+            server_info: None,
+            tools: Vec::new(),
+            initialized: true,
+        };
+
+        let args = serde_json::json!({"path": "/nonexistent"});
+        let result = client.call_tool("read_file", args).await.unwrap();
+
+        assert!(result.is_error);
+        assert!(result.content[0].as_text().unwrap().contains("file not found"));
     }
 }
