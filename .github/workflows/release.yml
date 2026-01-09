@@ -93,44 +93,46 @@ jobs:
             grep -E "^version|version.*path" "$f" | head -5
           done
       
-      # Publish in dependency order - failures will stop the workflow
-      - name: Publish agents-macros
-        run: cargo publish -p agents-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-core
-        run: cargo publish -p agents-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-toolkit
-        run: cargo publish -p agents-toolkit --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-persistence
-        run: cargo publish -p agents-persistence --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-runtime
-        run: cargo publish -p agents-runtime --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-aws
-        run: cargo publish -p agents-aws --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 15
-      
-      - name: Publish agents-mcp
-        run: cargo publish -p agents-mcp --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
-      - name: Wait for crates.io index
-        run: sleep 20
-      
-      - name: Publish agents-sdk (unified SDK)
-        run: cargo publish -p agents-sdk --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty || echo "Already published"
+      # Helper function to publish with proper error handling
+      - name: Publish all crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          publish_crate() {
+            local crate=$1
+            echo "::group::Publishing $crate"
+            
+            # Try to publish
+            if cargo publish -p "$crate" --token "$CARGO_REGISTRY_TOKEN" --allow-dirty 2>&1 | tee /tmp/publish_output.txt; then
+              echo "✅ $crate published successfully"
+            else
+              # Check if it's "already exists" error (which is OK)
+              if grep -q "already exists" /tmp/publish_output.txt; then
+                echo "⏭️ $crate already published at this version, skipping"
+              else
+                echo "❌ Failed to publish $crate"
+                cat /tmp/publish_output.txt
+                exit 1
+              fi
+            fi
+            echo "::endgroup::"
+            
+            # Wait for crates.io index to update
+            echo "Waiting 20s for crates.io index..."
+            sleep 20
+          }
+          
+          # Publish in dependency order
+          publish_crate agents-macros
+          publish_crate agents-core
+          publish_crate agents-toolkit
+          publish_crate agents-persistence
+          publish_crate agents-runtime
+          publish_crate agents-aws
+          publish_crate agents-mcp
+          publish_crate agents-sdk
+          
+          echo "🎉 All crates published successfully!"
 
   create_release:
     needs: publish
