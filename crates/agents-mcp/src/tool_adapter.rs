@@ -266,14 +266,23 @@ mod tests {
     #[test]
     fn test_name_with_dashes_converted_to_underscores() {
         // MCP tools often have dashes in names, but OpenAI requires underscores
-        assert_eq!(format_name(None, "resolve-library-id"), "resolve_library_id");
-        assert_eq!(format_name(Some("docs"), "resolve-library-id"), "docs_resolve_library_id");
+        assert_eq!(
+            format_name(None, "resolve-library-id"),
+            "resolve_library_id"
+        );
+        assert_eq!(
+            format_name(Some("docs"), "resolve-library-id"),
+            "docs_resolve_library_id"
+        );
     }
 
     #[test]
     fn test_namespace_with_special_chars() {
         // Namespaces might come from server names with special chars
-        assert_eq!(format_name(Some("context7"), "query-docs"), "context7_query_docs");
+        assert_eq!(
+            format_name(Some("context7"), "query-docs"),
+            "context7_query_docs"
+        );
     }
 
     #[test]

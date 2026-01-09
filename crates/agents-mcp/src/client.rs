@@ -454,9 +454,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_request_success() {
-        let transport = MockTransport::new(vec![
-            r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#,
-        ]);
+        let transport =
+            MockTransport::new(vec![r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#]);
         let client = McpClient {
             transport: Arc::new(Mutex::new(Box::new(transport))),
             request_id: AtomicU64::new(1),
@@ -466,10 +465,8 @@ mod tests {
             initialized: true,
         };
 
-        let result: serde_json::Value = client
-            .send_request("tools/list", None::<()>)
-            .await
-            .unwrap();
+        let result: serde_json::Value =
+            client.send_request("tools/list", None::<()>).await.unwrap();
 
         assert_eq!(result, serde_json::json!({"tools": []}));
     }
@@ -503,9 +500,7 @@ mod tests {
     #[tokio::test]
     async fn test_send_request_id_mismatch_error() {
         // Server returns response with wrong ID
-        let transport = MockTransport::new(vec![
-            r#"{"jsonrpc":"2.0","id":999,"result":{}}"#,
-        ]);
+        let transport = MockTransport::new(vec![r#"{"jsonrpc":"2.0","id":999,"result":{}}"#]);
         let client = McpClient {
             transport: Arc::new(Mutex::new(Box::new(transport))),
             request_id: AtomicU64::new(1),
@@ -515,9 +510,8 @@ mod tests {
             initialized: true,
         };
 
-        let result: Result<serde_json::Value, _> = client
-            .send_request("test/method", None::<()>)
-            .await;
+        let result: Result<serde_json::Value, _> =
+            client.send_request("test/method", None::<()>).await;
 
         assert!(matches!(result, Err(McpError::ResponseIdMismatch { .. })));
     }
@@ -537,9 +531,8 @@ mod tests {
             initialized: true,
         };
 
-        let result: Result<serde_json::Value, _> = client
-            .send_request("test/method", None::<()>)
-            .await;
+        let result: Result<serde_json::Value, _> =
+            client.send_request("test/method", None::<()>).await;
 
         // Should return a Protocol error (JSON-RPC errors become Protocol errors)
         assert!(result.is_err());
@@ -587,6 +580,9 @@ mod tests {
         let result = client.call_tool("read_file", args).await.unwrap();
 
         assert!(result.is_error);
-        assert!(result.content[0].as_text().unwrap().contains("file not found"));
+        assert!(result.content[0]
+            .as_text()
+            .unwrap()
+            .contains("file not found"));
     }
 }
